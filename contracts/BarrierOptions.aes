@@ -230,6 +230,8 @@ contract BarrierOptions =
   entrypoint getOracleQuery(id : int) : option(price_query) =
     Map.lookup(id, state.oracle_queries)
 
+  entrypoint getMarketCounter() : int = state.market_counter
+
   function getMarket(id : int) : market =
     switch(Map.lookup(id, state.markets))
       None => abort("ERR_UNKNOWN_MARKET")

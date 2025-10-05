@@ -1,5 +1,12 @@
-import { utils } from "@aeternity/aeproject";
-import { Contract, getFileSystem } from "@aeternity/aepp-sdk";
+import { promises as fs } from "fs";
+import {
+  AeSdk,
+  AccountMemory,
+  CompilerHttp,
+  Contract,
+  Node,
+  getFileSystem,
+} from "@aeternity/aepp-sdk";
 
 const BARRIER_SOURCE = "./contracts/BarrierOptions.aes";
 const CONTRACT_ADDRESS = process.env.BARRIER_CONTRACT_ADDRESS;
@@ -7,6 +14,9 @@ const ORACLE_ID = process.env.PRICE_ORACLE_ID;
 const QUERY_FEE = BigInt(process.env.ORACLE_QUERY_FEE ?? "1000000000000000");
 const QUERY_TTL = parseInt(process.env.ORACLE_QUERY_TTL ?? "500", 10);
 const RESPONSE_TTL = parseInt(process.env.ORACLE_RESPONSE_TTL ?? "250", 10);
+const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
+const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
+const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 
 function validateEnvironment() {
   if (!CONTRACT_ADDRESS) {
@@ -29,10 +39,20 @@ function validateEnvironment() {
 async function configureOracle() {
   validateEnvironment();
 
-  const ownerAccount = utils.getDefaultAccounts()[0];
-  const aeSdk = utils.getSdk({});
+  if (!SECRET_KEY) {
+    throw new Error("DEPLOYER_SECRET_KEY env var is required");
+  }
+
+  const node = new Node(NODE_URL);
+  const account = new AccountMemory(SECRET_KEY);
+  const aeSdk = new AeSdk({
+    nodes: [{ name: "target-node", instance: node }],
+    accounts: [account],
+    onCompiler: new CompilerHttp(COMPILER_URL),
+  });
+
   const fileSystem = await getFileSystem(BARRIER_SOURCE);
-  const sourceCode = utils.getContractContent(BARRIER_SOURCE);
+  const sourceCode = await fs.readFile(BARRIER_SOURCE, "utf-8");
 
   const barrierContract = await Contract.initialize({
     ...aeSdk.getContext(),
@@ -47,7 +67,7 @@ async function configureOracle() {
     QUERY_TTL,
     RESPONSE_TTL,
     {
-      onAccount: ownerAccount,
+      onAccount: account,
     }
   );
 

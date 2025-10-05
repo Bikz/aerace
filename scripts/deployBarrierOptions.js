@@ -5,6 +5,7 @@ import {
   CompilerHttp,
   Contract,
   Node,
+  getFileSystem,
 } from "@aeternity/aepp-sdk";
 
 const CONTRACT_PATH = process.env.CONTRACT_PATH ?? "./contracts/BarrierOptions.aes";
@@ -31,16 +32,18 @@ async function deploy() {
     onCompiler: new CompilerHttp(COMPILER_URL),
   });
 
+  const fileSystem = await getFileSystem(CONTRACT_PATH);
   const contract = await Contract.initialize({
     ...aeSdk.getContext(),
     sourceCode,
+    fileSystem,
   });
 
   console.log("Compiling BarrierOptions...");
   await contract.$compile();
 
   console.log("Deploying BarrierOptions...");
-  const deployInfo = await contract.$deploy({
+  const deployInfo = await contract.$deploy([], {
     onAccount: account,
   });
 
