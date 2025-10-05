@@ -14,13 +14,17 @@ const mockContract = {
   },
 };
 
+const mockConnectToWallet = jest.fn(async () => undefined);
+const mockDisconnectWallet = jest.fn(() => undefined);
+
 jest.mock("./hooks/useAeternitySDK", () => {
   return () => ({
     aeSdk: {
       getBalance: jest.fn(async () => "0"),
       initializeContract: jest.fn(async () => mockContract),
     },
-    connectToWallet: jest.fn(async () => undefined),
+    connectToWallet: mockConnectToWallet,
+    disconnectWallet: mockDisconnectWallet,
     address: undefined,
     networkId: undefined,
   });
@@ -52,6 +56,10 @@ test("enters trading interface after launching", async () => {
   render(<App />);
 
   await user.click(screen.getByRole("button", { name: /launch app/i }));
+
+  const connectButton = await screen.findByRole("button", { name: /connect wallet/i });
+  await user.click(connectButton);
+  expect(mockConnectToWallet).toHaveBeenCalled();
 
   const heading = await screen.findByRole("heading", { name: /aerace markets/i });
   expect(heading).toBeInTheDocument();

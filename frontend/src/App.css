@@ -248,6 +248,46 @@ a {
   margin: 0.15rem 0;
 }
 
+.wallet-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.connect-button,
+.disconnect-button {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: var(--text);
+  padding: 0.45rem 1.3rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.connect-button {
+  border-color: rgba(14, 165, 233, 0.6);
+  color: var(--accent);
+}
+
+.connect-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  transform: translateY(-1px);
+}
+
+.connect-button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.disconnect-button:hover {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.5);
+  transform: translateY(-1px);
+}
+
 .warning {
   color: var(--error);
   font-weight: 600;

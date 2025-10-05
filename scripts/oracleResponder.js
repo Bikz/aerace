@@ -9,7 +9,7 @@ import {
 } from "@aeternity/aepp-sdk";
 
 const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
-const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
+const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v7.compiler.aepps.com";
 const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 const ORACLE_CONTRACT = process.env.ORACLE_CONTRACT_ADDRESS;
 const BARRIER_CONTRACT = process.env.BARRIER_CONTRACT_ADDRESS;

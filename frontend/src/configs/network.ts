@@ -7,12 +7,12 @@ const networks = {
   development: {
     id: "ae_uat",
     url: "https://testnet.aeternity.io",
-    compilerUrl: "https://v8.compiler.aepps.com",
+    compilerUrl: "https://v7.compiler.aepps.com",
   },
   production: {
     id: "ae_mainnet",
     url: "https://mainnet.aeternity.io",
-    compilerUrl: "https://v8.compiler.aepps.com",
+    compilerUrl: "https://v7.compiler.aepps.com",
   },
 } as const;
 

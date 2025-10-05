@@ -10,7 +10,7 @@ import {
 
 const CONTRACT_PATH = process.env.CONTRACT_PATH ?? "./contracts/BarrierOptions.aes";
 const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
-const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
+const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v7.compiler.aepps.com";
 const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 
 async function loadContractSource(path) {

@@ -149,7 +149,7 @@ const statusClass = (status: MarketStatus) => {
 };
 
 const App = () => {
-  const { aeSdk, connectToWallet, address, networkId } = useAeternitySDK();
+  const { aeSdk, connectToWallet, disconnectWallet, address, networkId } = useAeternitySDK();
   const [showApp, setShowApp] = useState(false);
   const [balance, setBalance] = useState<string>("—");
   const [connectionMessage, setConnectionMessage] = useState<string | undefined>();
@@ -259,27 +259,7 @@ const App = () => {
     [address],
   );
 
-  useEffect(() => {
-    if (!showApp) return;
-    const init = async () => {
-      try {
-        setIsConnecting(true);
-        setConnectionMessage("Connecting to wallet…");
-        await connectToWallet();
-        setConnectionMessage(undefined);
-      } catch (error) {
-        if (error instanceof Error) {
-          setConnectionMessage(error.message);
-        } else {
-          setConnectionMessage("Unable to connect to wallet");
-        }
-      } finally {
-        setIsConnecting(false);
-      }
-    };
-
-    void init();
-  }, [showApp, connectToWallet]);
+  const isWalletConnected = Boolean(address);
 
   useEffect(() => {
     if (!showApp || !address || !networkId) return;
@@ -438,6 +418,37 @@ const App = () => {
       barrierDown: suggestions.down.toString(),
     }));
   };
+
+  const handleConnectWallet = useCallback(async () => {
+    setErrorMessage(undefined);
+    setSuccessMessage(undefined);
+    try {
+      setIsConnecting(true);
+      setConnectionMessage("Connecting to wallet…");
+      await connectToWallet();
+      setConnectionMessage(undefined);
+    } catch (error) {
+      if (error instanceof Error) {
+        setConnectionMessage(error.message);
+      } else {
+        setConnectionMessage("Unable to connect to wallet");
+      }
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [connectToWallet]);
+
+  const handleDisconnectWallet = useCallback(() => {
+    setErrorMessage(undefined);
+    setSuccessMessage(undefined);
+    disconnectWallet();
+    setConnectionMessage(undefined);
+    setIsConnecting(false);
+    setBalance("—");
+    setContractInstance(undefined);
+    setMarkets([]);
+    setSelectedMarketId(null);
+  }, [disconnectWallet]);
 
   const handleCreateMarket = async () => {
     setErrorMessage(undefined);
@@ -667,6 +678,21 @@ const App = () => {
               <p>Network: {networkId ?? "—"}</p>
             </>
           )}
+          <div className="wallet-actions">
+            {!isWalletConnected ? (
+              <button
+                className="connect-button"
+                onClick={() => void handleConnectWallet()}
+                disabled={isConnecting}
+              >
+                {isConnecting ? "Connecting…" : "Connect Wallet"}
+              </button>
+            ) : (
+              <button className="disconnect-button" onClick={handleDisconnectWallet}>
+                Disconnect
+              </button>
+            )}
+          </div>
         </div>
       </header>
 

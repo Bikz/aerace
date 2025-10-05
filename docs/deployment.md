@@ -6,14 +6,15 @@ This guide walks through deploying the contracts to æternity testnet and wiring
 - Node.js ≥ 18, npm
 - `npm install` completed
 - æternity account with testnet funds (`DEPLOYER_SECRET_KEY` / `ak_…`)
-- Access to the æternity compiler (`https://v8.compiler.aepps.com`) and node (`https://testnet.aeternity.io`)
+- Access to the æternity compiler (`https://v7.compiler.aepps.com`) and node (`https://testnet.aeternity.io`)
+- Ensure the compiler version stays within `>=7.1.1 <8.0.0` until the AEproject stack adds v8 support.
 
 ## 2. Deploy `ExchangeOracle`
 ```bash
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   ORACLE_QUERY_FEE=1000000000000000 \
   ORACLE_REGISTER_TTL=500 \
   node scripts/deployOracle.js
@@ -25,7 +26,7 @@ Output: oracle contract address (`ct_…`) and oracle ID (`ok_…`).
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   node scripts/deployBarrierOptions.js
 ```
 Output: barrier contract address (`ct_…`).
@@ -35,7 +36,7 @@ Output: barrier contract address (`ct_…`).
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   BARRIER_CONTRACT_ADDRESS=ct_... \
   PRICE_ORACLE_ID=ok_... \
   ORACLE_QUERY_FEE=1000000000000000 \
@@ -57,7 +58,7 @@ Keep `scripts/oracleResponder.js` running to answer queries and extend TTL:
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   ORACLE_CONTRACT_ADDRESS=ct_... \
   BARRIER_CONTRACT_ADDRESS=ct_... \
   ORACLE_EXTEND_TTL=50 \

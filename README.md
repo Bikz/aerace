@@ -39,14 +39,15 @@ Runs the Mocha suite (`test/*.js`) against the local AEproject environment (or w
 ### Prerequisites
 - æternity account with testnet funds (we used `ak_mK1NyxjzK4GzZKXWxDfGbeqwEhQfZsNAx24J2NzJGQGUdu6sJ`).
 - Deployer private key (`sk_…`).
-- Node URL & compiler URL (defaults to testnet / v8).
+- Node URL & compiler URL (defaults to testnet / v7).
+- Sophia compiler must stay on `>=7.1.1 <8.0.0` for the current AEproject toolchain.
 
 ### 1. Deploy Exchange Oracle
 ```bash
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   ORACLE_QUERY_FEE=1000000000000000 \
   ORACLE_REGISTER_TTL=500 \
   node scripts/deployOracle.js
@@ -60,7 +61,7 @@ Outputs:
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   node scripts/deployBarrierOptions.js
 ```
 Outputs contract address (`ct_...`).
@@ -70,7 +71,7 @@ Outputs contract address (`ct_...`).
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   BARRIER_CONTRACT_ADDRESS=ct_... \
   PRICE_ORACLE_ID=ok_... \
   ORACLE_QUERY_FEE=1000000000000000 \
@@ -85,7 +86,7 @@ The dApp relies on an off-chain service to answer oracle price requests. A ready
 env \
   DEPLOYER_SECRET_KEY=sk_... \
   AE_NODE_URL=https://testnet.aeternity.io \
-  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  AE_COMPILER_URL=https://v7.compiler.aepps.com \
   ORACLE_CONTRACT_ADDRESS=ct_... \
   BARRIER_CONTRACT_ADDRESS=ct_... \
   ORACLE_EXTEND_TTL=50 \
@@ -105,7 +106,7 @@ Keep the responder running continuously while your front end is live.
 |----------|-------------|---------|
 | `DEPLOYER_SECRET_KEY` | Private key (`sk_...`) for the deployment/responder account | — |
 | `AE_NODE_URL` | æternity node RPC URL | `https://testnet.aeternity.io` |
-| `AE_COMPILER_URL` | Sophia compiler URL | `https://v8.compiler.aepps.com` |
+| `AE_COMPILER_URL` | Sophia compiler URL | `https://v7.compiler.aepps.com` |
 | `ORACLE_QUERY_FEE` | Fee (in aettos) paid when requesting oracle price | `1000000000000000` |
 | `ORACLE_REGISTER_TTL` | TTL (blocks) when registering the oracle | `500` |
 | `ORACLE_QUERY_TTL` | TTL (blocks) for price queries | `500` |

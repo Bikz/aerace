@@ -30,7 +30,11 @@ const useAeternitySDK = () => {
         onNetworkChange: ({ networkId: nextNetworkId }) => {
           setNetworkId(nextNetworkId);
         },
-        onDisconnect: () => console.log("Wallet disconnected"),
+        onDisconnect: () => {
+          setAddress(undefined);
+          setNetworkId(undefined);
+          console.log("Wallet disconnected");
+        },
       }),
     [],
   );
@@ -57,7 +61,19 @@ const useAeternitySDK = () => {
     aeSdk.onAddressChange({ current: { [aeSdk.address]: {} }, connected: {} });
   }, [aeSdk]);
 
-  return { aeSdk, connectToWallet, address, networkId };
+  const disconnectWallet = useCallback(() => {
+    try {
+      aeSdk.disconnectWallet();
+    } catch (error) {
+      if (error instanceof Error) {
+        console.warn("Wallet disconnect failed", error);
+      }
+    }
+    setAddress(undefined);
+    setNetworkId(undefined);
+  }, [aeSdk]);
+
+  return { aeSdk, connectToWallet, disconnectWallet, address, networkId };
 };
 
 export default useAeternitySDK;
