@@ -1,7 +1,7 @@
 const contracts = {
   barrierAddress:
     process.env.REACT_APP_BARRIER_CONTRACT_ADDRESS ??
-    "ct_B6VqJpT4mz4nsJTmyjwRFxxhVfTjd9MxbtVdoS3V2qS8Ewebz",
+    "ct_FR2TH3KW7Xb1Wc9Sw58S4oXnmU87QrqZRdbXHErGHPGYXHZNb",
   oracleId:
     process.env.REACT_APP_PRICE_ORACLE_ID ??
     "ok_2kuKiwQ8FzD7qA4WvkASbHiQ3Wf5FZX7zEe9yCj2CKuHNNZg3E",

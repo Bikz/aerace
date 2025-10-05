@@ -115,7 +115,6 @@ contract BarrierOptions =
         Chain.event(OraclePriceConsumedEvent(id, price))
 
   stateful entrypoint createMarket(asset : string, barrierUp : int, barrierDown : int, duration : int, raceMode : bool) =
-    require(Call.caller == state.owner, "ERR_NOT_OWNER")
     require(barrierUp > 0, "ERR_INVALID_BARRIER_UP")
     require(duration > 0, "ERR_INVALID_DURATION")
     if(raceMode)

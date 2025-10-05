@@ -379,7 +379,7 @@ const App = () => {
     } finally {
       setMarketsLoading(false);
     }
-  }, [contractInstance, selectedMarketId]);
+  }, [aeSdk.api, contractInstance, selectedMarketId]);
 
   useEffect(() => {
     if (!showApp) return;
@@ -920,9 +920,7 @@ const App = () => {
                 );
               })
             ) : (
-              <li className="discover-empty">
-                No markets yet. Owners can launch one below.
-              </li>
+              <li className="discover-empty">No markets yet. Launch one below.</li>
             )}
           </ul>
 
@@ -1097,9 +1095,6 @@ const App = () => {
                     ? "Creating…"
                     : "Create Market"}
                 </button>
-                {!isOwner && (
-                  <p className="hint">Only the owner can create markets.</p>
-                )}
               </div>
 
               <div className="info">
@@ -1110,7 +1105,8 @@ const App = () => {
                 </p>
                 <p>Query fee: {Number(contracts.oracleQueryFee) / 1e18} AE</p>
                 <p className="hint">
-                  Keep `oracleResponder.js` running so price requests are settled automatically.
+                  Keep `oracleResponder.js` running so price requests are settled automatically. Market
+                  creators cover the oracle fee when settlement is triggered.
                 </p>
               </div>
             </section>
