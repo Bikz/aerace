@@ -519,10 +519,6 @@ const App = () => {
     setErrorMessage(undefined);
     setSuccessMessage(undefined);
     if (!guardConnection()) return;
-    if (!isOwner) {
-      setErrorMessage("Only the contract owner can create markets on-chain.");
-      return;
-    }
     try {
       let barrierUp = Number(createForm.barrierUp);
       let barrierDown = Number(createForm.barrierDown);

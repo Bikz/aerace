@@ -13,13 +13,13 @@ const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
 const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
 const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 const BARRIER_CONTRACT_ADDRESS =
-  process.env.BARRIER_CONTRACT_ADDRESS ?? "ct_B6VqJpT4mz4nsJTmyjwRFxxhVfTjd9MxbtVdoS3V2qS8Ewebz";
+  process.env.BARRIER_CONTRACT_ADDRESS ?? "ct_FR2TH3KW7Xb1Wc9Sw58S4oXnmU87QrqZRdbXHErGHPGYXHZNb";
 
 const DEMO_CONFIG = {
   asset: "AE",
-  barrierUp: 27,
-  barrierDown: 18,
-  duration: 7200, // ~6 hours
+  barrierUp: 23,
+  barrierDown: 21,
+  duration: 20, // ~1 minute at 3s blocks
   isRace: false,
 };
 
