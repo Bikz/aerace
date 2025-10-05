@@ -69,6 +69,7 @@ const DURATION_OPTIONS = [
 ];
 const DEFAULT_RAKE_PPM = 20000;
 const RAKE_SCALE = 1_000_000;
+const COINGECKO_API_KEY = process.env.REACT_APP_COINGECKO_API_KEY;
 const QUICK_AMOUNTS = [1, 5, 10, 25];
 
 type PricePoint = {
@@ -196,12 +197,21 @@ const App = () => {
       try {
         setPriceLoading(true);
         setPriceError(undefined);
+        const headers = COINGECKO_API_KEY
+          ? {
+              headers: {
+                "x-cg-pro-api-key": COINGECKO_API_KEY,
+              },
+            }
+          : undefined;
         const [priceRes, chartRes] = await Promise.all([
           fetch(
             `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
+            headers,
           ),
           fetch(
             `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
+            headers,
           ),
         ]);
 
