@@ -10,7 +10,7 @@ import {
 
 const ORACLE_SOURCE = "./contracts/ExchangeOracle.aes";
 const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
-const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v7.compiler.aepps.com";
+const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
 const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 const DEFAULT_FEE = BigInt(process.env.ORACLE_QUERY_FEE ?? "1000000000000000"); // 0.001 AE
 const DEFAULT_TTL = parseInt(process.env.ORACLE_REGISTER_TTL ?? "500", 10);

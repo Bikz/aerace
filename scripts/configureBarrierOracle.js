@@ -15,7 +15,7 @@ const QUERY_FEE = BigInt(process.env.ORACLE_QUERY_FEE ?? "1000000000000000");
 const QUERY_TTL = parseInt(process.env.ORACLE_QUERY_TTL ?? "500", 10);
 const RESPONSE_TTL = parseInt(process.env.ORACLE_RESPONSE_TTL ?? "250", 10);
 const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
-const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v7.compiler.aepps.com";
+const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
 const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 
 function validateEnvironment() {
