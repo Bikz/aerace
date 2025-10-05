@@ -314,7 +314,7 @@ const App = () => {
 
     const loadContract = async () => {
       try {
-        const instance = (await aeSdk.initializeContract({
+        const instance = (await (aeSdk as any).initializeContract({
           sourceCode: barrierOptionsSource,
           address: contracts.barrierAddress as Encoded.ContractAddress,
         })) as any;
