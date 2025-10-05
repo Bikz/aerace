@@ -69,6 +69,7 @@ const DURATION_OPTIONS = [
 ];
 const DEFAULT_RAKE_PPM = 20000;
 const RAKE_SCALE = 1_000_000;
+const QUICK_AMOUNTS = [1, 5, 10, 25];
 
 type PricePoint = {
   time: string;
@@ -118,6 +119,8 @@ const defaultCreateForm: CreateFormState = {
   asset: "AE",
 };
 
+type ViewMode = "discover" | "market";
+
 const formatAe = (value: bigint) => {
   if (value === 0n) return "0";
   const integer = value / AE_DECIMALS;
@@ -158,6 +161,7 @@ const App = () => {
   const [markets, setMarkets] = useState<MarketView[]>([]);
   const [marketsLoading, setMarketsLoading] = useState(false);
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("discover");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [successMessage, setSuccessMessage] = useState<string | undefined>();
   const [createForm, setCreateForm] = useState<CreateFormState>(defaultCreateForm);
@@ -252,6 +256,22 @@ const App = () => {
   const poolAfterRake = poolAe * (1 - rakeRate);
   const upMultiplier = upStakeAe > 0 ? poolAfterRake / upStakeAe : 0;
   const downMultiplier = downStakeAe > 0 ? poolAfterRake / downStakeAe : 0;
+  const yesPricePercent = poolAe > 0 ? (upStakeAe / poolAe) * 100 : 50;
+  const noPricePercent = poolAe > 0 ? (downStakeAe / poolAe) * 100 : 50;
+  const numericStake = Number(betForm.amount) || 0;
+  const potentialPayout = numericStake * (betForm.onUp ? upMultiplier || 0 : downMultiplier || 0);
+  const calcChangePercent = (asset: AssetOption) => {
+    const series = assetData[asset]?.series ?? [];
+    if (series.length < 2) return 0;
+    const start = series[0]?.value ?? 0;
+    const end = series[series.length - 1]?.value ?? 0;
+    if (!start) return 0;
+    return ((end - start) / start) * 100;
+  };
+  const selectedChangePercent = selectedMarket ? calcChangePercent(selectedMarket.asset) : 0;
+  const selectedSeries = selectedAssetData?.series ?? [];
+  const selectedSpot = selectedAssetData?.price ?? null;
+  const uniqueAssetCount = new Set(markets.map((market) => market.asset)).size;
 
   const isOwner = useMemo(
     () =>
@@ -262,20 +282,28 @@ const App = () => {
   const isWalletConnected = Boolean(address);
 
   useEffect(() => {
-    if (!showApp || !address || !networkId) return;
+    if (!showApp || !address) return;
 
     const loadBalance = async () => {
-      if (networkId !== network.id) {
-        setConnectionMessage(
-          `Network "${networkId}" is not supported. Switch to ${network.id}.`,
-        );
-        return;
+      try {
+        if (networkId && networkId !== network.id) {
+          setConnectionMessage(
+            `Network "${networkId}" is not supported. Switch to ${network.id}.`,
+          );
+          setBalance("—");
+          return;
+        }
+        setConnectionMessage(undefined);
+        const currentBalance = await aeSdk.getBalance(address, {
+          format: AE_AMOUNT_FORMATS.AE,
+        });
+        setBalance(currentBalance);
+      } catch (error) {
+        if (error instanceof Error) {
+          setConnectionMessage(error.message);
+        }
+        setBalance("—");
       }
-      setConnectionMessage(undefined);
-      const currentBalance = await aeSdk.getBalance(address, {
-        format: AE_AMOUNT_FORMATS.AE,
-      });
-      setBalance(currentBalance);
     };
 
     void loadBalance();
@@ -384,6 +412,14 @@ const App = () => {
     });
   }, [autoBarriers, assetData, createForm.asset, createForm.isRace, computeSuggestedBarriers]);
 
+  useEffect(() => {
+    if (!markets.length) return;
+    const uniqueAssets = Array.from(new Set(markets.map((market) => market.asset)));
+    uniqueAssets.forEach((asset) => {
+      void fetchAssetData(asset);
+    });
+  }, [markets, fetchAssetData]);
+
   const guardConnection = useCallback(() => {
     if (!address) {
       setErrorMessage("Connect your wallet to continue.");
@@ -419,6 +455,11 @@ const App = () => {
     }));
   };
 
+  const handleLaunchApp = () => {
+    setShowApp(true);
+    setViewMode("discover");
+  };
+
   const handleConnectWallet = useCallback(async () => {
     setErrorMessage(undefined);
     setSuccessMessage(undefined);
@@ -448,7 +489,21 @@ const App = () => {
     setContractInstance(undefined);
     setMarkets([]);
     setSelectedMarketId(null);
+    setViewMode("discover");
   }, [disconnectWallet]);
+
+  const handleSelectMarket = (marketId: number) => {
+    setSelectedMarketId(marketId);
+    setViewMode("market");
+  };
+
+  const handleBackToDiscover = () => {
+    setViewMode("discover");
+  };
+
+  const handleQuickAmount = (value: number) => {
+    setBetForm((prev) => ({ ...prev, amount: value.toString() }));
+  };
 
   const handleCreateMarket = async () => {
     setErrorMessage(undefined);
@@ -577,7 +632,7 @@ const App = () => {
       <div className="landing">
         <header className="landing-nav">
           <span className="brand">AERace</span>
-          <button className="launch-button" onClick={() => setShowApp(true)}>
+          <button className="launch-button" onClick={handleLaunchApp}>
             Launch App
           </button>
         </header>
@@ -593,7 +648,7 @@ const App = () => {
               traders on æternity.
             </p>
             <div className="hero-actions">
-              <button className="launch-button" onClick={() => setShowApp(true)}>
+              <button className="launch-button" onClick={handleLaunchApp}>
                 Launch Trading Interface
               </button>
               <a
@@ -660,9 +715,28 @@ const App = () => {
   return (
     <div className="app-shell">
       <header className="top-bar">
-        <div>
+        <div className="top-bar-primary">
           <h1>AERace Markets</h1>
-          <p className="tagline">Touch, race, and settle on æternity</p>
+          <p className="tagline">Discovery-driven barrier options on æternity</p>
+          <div className="view-tabs">
+            <button
+              type="button"
+              className={`tab ${viewMode === "discover" ? "active" : ""}`}
+              onClick={() => setViewMode("discover")}
+            >
+              Discover
+            </button>
+            <button
+              type="button"
+              className={`tab ${viewMode === "market" ? "active" : ""}`}
+              onClick={() => {
+                if (selectedMarketId) setViewMode("market");
+              }}
+              disabled={!selectedMarketId}
+            >
+              Market
+            </button>
+          </div>
         </div>
         <div className="wallet-info">
           {connectionMessage ? (
@@ -696,167 +770,416 @@ const App = () => {
         </div>
       </header>
 
-      <main className="layout">
-        <section className="panel markets">
-          <div className="panel-header">
-            <h2>Markets</h2>
-            <button
-              className="refresh-button"
-              onClick={() => void loadMarkets()}
-              disabled={marketsLoading}
-            >
-              {marketsLoading ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-          {!markets.length && !marketsLoading && (
-            <p className="empty">No markets yet. Owners can create one below.</p>
-          )}
-          <ul className="market-list">
-            {markets.map((market) => (
-              <li
-                key={market.id}
-                className={`market-card ${
-                  selectedMarketId === market.id ? "selected" : ""
-                }`}
-                onClick={() => setSelectedMarketId(market.id)}
-              >
-                <div className={statusClass(market.status)}>
-                  {STATUS_LABELS[market.status]}
-                </div>
-                <header>
-                  <h3>#{market.id}</h3>
-                  <span className="asset-pill">{assetLabel(market.id)}</span>
-                  {market.isRace && <span className="race-pill">Race</span>}
-                </header>
-                <dl>
-                  <div>
-                    <dt>Barrier Up</dt>
-                    <dd>{market.barrierUp}</dd>
-                  </div>
-                  <div>
-                    <dt>Barrier Down</dt>
-                    <dd>{market.barrierDown}</dd>
-                  </div>
-                  <div>
-                    <dt>Expiry</dt>
-                    <dd>Block {market.expiry}</dd>
-                  </div>
-                </dl>
-                <footer>
-                  <span>Up Pool: {formatAe(market.totalUp)} AE</span>
-                  <span>Down Pool: {formatAe(market.totalDown)} AE</span>
-                </footer>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="panel details">
-          <h2>Market Details</h2>
-          {selectedMarket ? (
-            <>
-              <div className="detail-grid">
-                <div>
-                  <span className="label">Status</span>
-                  <span className={statusClass(selectedMarket.status)}>
-                    {STATUS_LABELS[selectedMarket.status]}
-                  </span>
-                </div>
-                <div>
-                  <span className="label">Asset</span>
-                  <span>{selectedMarket.asset}/USD</span>
-                </div>
-                <div>
-                  <span className="label">Race</span>
-                  <span>{selectedMarket.isRace ? "Yes" : "No"}</span>
-                </div>
-                <div>
-                  <span className="label">Barrier Up</span>
-                  <span>{selectedMarket.barrierUp}</span>
-                </div>
-                <div>
-                  <span className="label">Barrier Down</span>
-                  <span>{selectedMarket.barrierDown}</span>
-                </div>
-                <div>
-                  <span className="label">Expiry</span>
-                  <span>Block {selectedMarket.expiry}</span>
-                </div>
-                <div>
-                  <span className="label">Up Pool</span>
-                  <span>{formatAe(selectedMarket.totalUp)} AE</span>
-                </div>
-                <div>
-                  <span className="label">Down Pool</span>
-                  <span>{formatAe(selectedMarket.totalDown)} AE</span>
-                </div>
+      {viewMode === "discover" && (
+        <main className="discover-layout">
+          <section className="discover-header">
+            <div>
+              <h2>Explore live barrier markets</h2>
+              <p>Curated race and touch plays with oracle settlement and pooled liquidity.</p>
+              <div className="discover-stats">
+                <span>
+                  {markets.length} {markets.length === 1 ? "market" : "markets"}
+                </span>
+                <span>
+                  {uniqueAssetCount} {uniqueAssetCount === 1 ? "asset" : "assets"}
+                </span>
               </div>
+            </div>
+            <div className="discover-actions">
+              <button
+                type="button"
+                className="refresh-button"
+                onClick={() => void loadMarkets()}
+                disabled={marketsLoading}
+              >
+                {marketsLoading ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+          </section>
 
-              {selectedAssetData && selectedAssetData.series.length > 0 && (
-              <div className="chart-card">
-                <div className="chart-header">
-                  <div>
-                    <h3>{selectedMarket.asset}/USD</h3>
-                      <p>
-                        Spot ${selectedAssetData.price.toFixed(2)} · {selectedAssetData.series.length} points
-                      </p>
-                    </div>
+          <ul className="discover-grid">
+            {markets.length ? (
+              markets.map((market) => {
+                const assetEntry = assetData[market.asset];
+                const spot = assetEntry?.price ?? null;
+                const series = assetEntry?.series ?? [];
+                const hasSeries = series.length > 1;
+                const change = hasSeries ? calcChangePercent(market.asset) : 0;
+                const gradientId = `spark-${market.id}`;
+                const changeLabel = hasSeries
+                  ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`
+                  : "—";
+                return (
+                  <li key={market.id}>
                     <button
                       type="button"
-                      className="refresh-price"
-                      onClick={() => void fetchAssetData(selectedMarket.asset, true)}
+                      className="discover-card"
+                      onClick={() => handleSelectMarket(market.id)}
                     >
-                      Refresh
+                      <div className="discover-card-top">
+                        <div className="asset-meta">
+                          <span className="asset-pill">{market.asset}</span>
+                          {market.isRace && <span className="race-pill">Race</span>}
+                        </div>
+                        <span className={statusClass(market.status)}>
+                          {STATUS_LABELS[market.status]}
+                        </span>
+                      </div>
+                      <h3>#{market.id} · {market.asset} touch</h3>
+                      <p className="expiry">
+                        Touch {market.barrierDown} ↔ {market.barrierUp} · block {market.expiry}
+                      </p>
+                      <div className="discover-price-line">
+                        <span className="spot">
+                          {spot ? `$${spot.toFixed(2)}` : "Loading…"}
+                        </span>
+                        <span className={`change ${change >= 0 ? "up" : "down"}`}>
+                          {changeLabel}
+                        </span>
+                      </div>
+                      <div className="sparkline">
+                        {hasSeries ? (
+                          <ResponsiveContainerComponent width="100%" height={60}>
+                            <AreaChartComponent data={series}>
+                              <defs>
+                                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.6} />
+                                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.05} />
+                                </linearGradient>
+                              </defs>
+                              <XAxisComponent dataKey="time" hide />
+                              <YAxisComponent hide domain={["auto", "auto"]} />
+                              <TooltipComponent content={<PriceTooltip />} />
+                              <AreaComponent
+                                type="monotone"
+                                dataKey="value"
+                                stroke="var(--accent)"
+                                strokeWidth={2}
+                                fill={`url(#${gradientId})`}
+                              />
+                            </AreaChartComponent>
+                          </ResponsiveContainerComponent>
+                        ) : (
+                          <div className="sparkline-empty">Price sample pending…</div>
+                        )}
+                      </div>
+                      <div className="pool-line">
+                        <span>Up pool {formatAe(market.totalUp)} AE</span>
+                        <span>Down pool {formatAe(market.totalDown)} AE</span>
+                      </div>
                     </button>
-                  </div>
-                  <ResponsiveContainerComponent width="100%" height={200}>
-                    <AreaChartComponent data={selectedAssetData.series}>
-                      <defs>
-                        <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.65} />
-                          <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.05} />
-                        </linearGradient>
-                      </defs>
-                      <XAxisComponent dataKey="time" hide interval="preserveStartEnd" />
-                      <YAxisComponent hide domain={["auto", "auto"]} />
-                      <TooltipComponent content={<PriceTooltip />} />
-                      <AreaComponent
-                        type="monotone"
-                        dataKey="value"
-                        stroke="var(--accent)"
-                        strokeWidth={2}
-                        fill="url(#priceGradient)"
-                      />
-                    </AreaChartComponent>
-                  </ResponsiveContainerComponent>
-                </div>
-              )}
+                  </li>
+                );
+              })
+            ) : (
+              <li className="discover-empty">
+                No markets yet. Owners can launch one below.
+              </li>
+            )}
+          </ul>
 
-              <div className="odds-grid">
-                <div>
-                  <span className="label">Total pool</span>
-                  <span>
-                    {poolAe.toFixed(3)} AE · after rake {poolAfterRake.toFixed(3)} AE
-                  </span>
+          {isOwner && (
+            <section className="create-market-section">
+              <h2>Launch a market</h2>
+              <div className="form create-form">
+                <div className="field-group">
+                  <label htmlFor="asset">Asset</label>
+                  <select
+                    id="asset"
+                    value={createForm.asset}
+                    onChange={(event) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        asset: event.target.value as AssetOption,
+                      }))
+                    }
+                  >
+                    {ASSETS.map((asset) => (
+                      <option key={asset} value={asset}>
+                        {asset}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <span className="label">House rake</span>
-                  <span>{rakePercentLabel}%</span>
+                <div className="field-group price-row">
+                  <div>
+                    <span className="label">Spot price</span>
+                    <div className="spot-line">
+                      {priceLoading ? (
+                        <span className="spot-value">Loading…</span>
+                      ) : createAssetData ? (
+                        <span className="spot-value">
+                          ${createAssetData.price.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="spot-value">No data</span>
+                      )}
+                      <button
+                        type="button"
+                        className="refresh-price"
+                        onClick={() => void fetchAssetData(createForm.asset, true)}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {priceError && <p className="hint error-text">{priceError}</p>}
+                  </div>
+                  <label className="auto-toggle">
+                    <input
+                      type="checkbox"
+                      checked={autoBarriers}
+                      onChange={(event) => setAutoBarriers(event.target.checked)}
+                    />
+                    Auto barriers
+                  </label>
                 </div>
-                <div>
-                  <span className="label">Touch Up odds</span>
-                  <span>{upMultiplier > 0 ? `${upMultiplier.toFixed(2)}×` : "—"}</span>
+                <div className="field-group">
+                  <label htmlFor="barrier-up">Barrier Up</label>
+                  <input
+                    id="barrier-up"
+                    type="number"
+                    value={createForm.barrierUp}
+                    disabled={autoBarriers}
+                    onChange={handleBarrierChange("barrierUp")}
+                  />
                 </div>
-                <div>
-                  <span className="label">Touch Down odds</span>
-                  <span>{downMultiplier > 0 ? `${downMultiplier.toFixed(2)}×` : "—"}</span>
+                <div className="field-group">
+                  <label htmlFor="barrier-down">Barrier Down</label>
+                  <input
+                    id="barrier-down"
+                    type="number"
+                    value={createForm.barrierDown}
+                    disabled={autoBarriers}
+                    onChange={handleBarrierChange("barrierDown")}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="secondary-link use-suggested"
+                  onClick={handleUseSuggestedBarriers}
+                >
+                  Use suggested range
+                </button>
+                <div className="field-group">
+                  <label htmlFor="duration">Duration</label>
+                  <select
+                    id="duration"
+                    value={createForm.duration}
+                    onChange={(event) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        duration: event.target.value,
+                      }))
+                    }
+                  >
+                    {DURATION_OPTIONS.map((option) => (
+                      <option key={option.blocks} value={option.blocks}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={createForm.isRace}
+                    onChange={(event) =>
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        isRace: event.target.checked,
+                      }))
+                    }
+                  />
+                  Race market (requires both barriers)
+                </label>
+                <p className="hint">
+                  Rake: {rakePercentLabel}% goes to the house on each settlement.
+                </p>
+                <button
+                  onClick={handleCreateMarket}
+                  disabled={pendingAction === "create-market" || !isOwner}
+                >
+                  {pendingAction === "create-market"
+                    ? "Creating…"
+                    : "Create Market"}
+                </button>
+                {!isOwner && (
+                  <p className="hint">Only the owner can create markets.</p>
+                )}
+              </div>
+
+              <div className="info">
+                <h3>Oracle</h3>
+                <p>
+                  Oracle ID:
+                  <span className="mono"> {contracts.oracleId}</span>
+                </p>
+                <p>Query fee: {Number(contracts.oracleQueryFee) / 1e18} AE</p>
+                <p className="hint">
+                  Keep `oracleResponder.js` running so price requests are settled automatically.
+                </p>
+              </div>
+            </section>
+          )}
+        </main>
+      )}
+
+      {viewMode === "market" && (
+        <main className="market-layout">
+          {!selectedMarket ? (
+            <p className="empty detail-empty">Pick a market from Discover.</p>
+          ) : (
+            <>
+              <div className="market-nav">
+                <button
+                  type="button"
+                  className="back-button"
+                  onClick={handleBackToDiscover}
+                >
+                  ← Back to Discover
+                </button>
+                <span className={statusClass(selectedMarket.status)}>
+                  {STATUS_LABELS[selectedMarket.status]}
+                </span>
+              </div>
+
+              <div className="market-summary">
+                <div className="market-identity">
+                  <span className="asset-pill large">{selectedMarket.asset}</span>
+                  <div>
+                    <h2>{selectedMarket.asset}/USD barrier market</h2>
+                    <p>
+                      Touch range {selectedMarket.barrierDown} – {selectedMarket.barrierUp} · block {selectedMarket.expiry}
+                    </p>
+                  </div>
+                </div>
+                <div className="market-metrics">
+                  <div>
+                    <span className="label">Spot</span>
+                    <strong>{selectedSpot ? `$${selectedSpot.toFixed(2)}` : "Loading…"}</strong>
+                  </div>
+                  <div>
+                    <span className="label">24h change</span>
+                    <strong className={selectedChangePercent >= 0 ? "up" : "down"}>
+                      {selectedSeries.length > 1
+                        ? `${selectedChangePercent >= 0 ? "+" : ""}${selectedChangePercent.toFixed(2)}%`
+                        : "—"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="label">Pool</span>
+                    <strong>{poolAe.toFixed(3)} AE</strong>
+                  </div>
                 </div>
               </div>
 
-              <div className="form">
-                <h3>Place a Bet</h3>
-                <div className="field-group">
-                  <label htmlFor="bet-amount">Stake (AE)</label>
+              <section className="market-content">
+                <div className="chart-column">
+                  <div className="chart-card">
+                    <div className="chart-header">
+                      <div>
+                        <h3>{selectedMarket.asset}/USD</h3>
+                        <p>
+                          {selectedSpot ? `Spot $${selectedSpot.toFixed(2)}` : "Fetching spot…"} · {selectedSeries.length} points
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="refresh-price"
+                        onClick={() => void fetchAssetData(selectedMarket.asset, true)}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {selectedSeries.length > 1 ? (
+                      <ResponsiveContainerComponent width="100%" height={280}>
+                        <AreaChartComponent data={selectedSeries}>
+                          <defs>
+                            <linearGradient id="detailGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.6} />
+                              <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.05} />
+                            </linearGradient>
+                          </defs>
+                          <XAxisComponent dataKey="time" />
+                          <YAxisComponent domain={["auto", "auto"]} />
+                          <TooltipComponent content={<PriceTooltip />} />
+                          <AreaComponent
+                            type="monotone"
+                            dataKey="value"
+                            stroke="var(--accent)"
+                            strokeWidth={2}
+                            fill="url(#detailGradient)"
+                          />
+                        </AreaChartComponent>
+                      </ResponsiveContainerComponent>
+                    ) : (
+                      <div className="sparkline-empty chart-empty">Waiting on price history…</div>
+                    )}
+                  </div>
+
+                  <div className="outcome-card">
+                    <div className="outcome-row">
+                      <div>
+                        <h4>Touch Up</h4>
+                        <p>Barrier ≥ {selectedMarket.barrierUp}</p>
+                      </div>
+                      <div className="outcome-chance">
+                        {poolAe > 0 ? `${yesPricePercent.toFixed(1)}%` : "—"}
+                      </div>
+                      <button
+                        type="button"
+                        className="outcome-buy yes"
+                        onClick={() => setBetForm((prev) => ({ ...prev, onUp: true }))}
+                      >
+                        Buy Touch Up {poolAe > 0 ? `${yesPricePercent.toFixed(1)}¢` : ""}
+                      </button>
+                    </div>
+                    <div className="outcome-row">
+                      <div>
+                        <h4>Touch Down</h4>
+                        <p>Barrier ≤ {selectedMarket.barrierDown}</p>
+                      </div>
+                      <div className="outcome-chance">
+                        {poolAe > 0 ? `${noPricePercent.toFixed(1)}%` : "—"}
+                      </div>
+                      <button
+                        type="button"
+                        className="outcome-buy no"
+                        onClick={() => setBetForm((prev) => ({ ...prev, onUp: false }))}
+                      >
+                        Buy Touch Down {poolAe > 0 ? `${noPricePercent.toFixed(1)}¢` : ""}
+                      </button>
+                    </div>
+                    <footer className="outcome-pools">
+                      <span>Up pool {formatAe(selectedMarket.totalUp)} AE</span>
+                      <span>Down pool {formatAe(selectedMarket.totalDown)} AE</span>
+                    </footer>
+                  </div>
+                </div>
+
+                <aside className="trade-card">
+                  <h3>Place a trade</h3>
+                  <div className="trade-toggle">
+                    <button
+                      type="button"
+                      className={`toggle ${betForm.onUp ? "active" : ""}`}
+                      onClick={() => setBetForm((prev) => ({ ...prev, onUp: true }))}
+                    >
+                      Touch Up
+                      <span>{poolAe > 0 ? `${yesPricePercent.toFixed(1)}¢` : "—"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle ${!betForm.onUp ? "active" : ""}`}
+                      onClick={() => setBetForm((prev) => ({ ...prev, onUp: false }))}
+                    >
+                      Touch Down
+                      <span>{poolAe > 0 ? `${noPricePercent.toFixed(1)}¢` : "—"}</span>
+                    </button>
+                  </div>
+                  <label className="label" htmlFor="bet-amount">
+                    Stake (AE)
+                  </label>
                   <input
                     id="bet-amount"
                     type="number"
@@ -870,212 +1193,71 @@ const App = () => {
                       }))
                     }
                   />
-                </div>
-                <div className="field-group inline">
-                  <label>
-                    <input
-                      type="radio"
-                      checked={betForm.onUp}
-                      onChange={() => setBetForm({ ...betForm, onUp: true })}
-                    />
-                    Touch Up
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      checked={!betForm.onUp}
-                      onChange={() => setBetForm({ ...betForm, onUp: false })}
-                    />
-                    Touch Down / No-Touch
-                  </label>
-                </div>
-                <button
-                  onClick={handlePlaceBet}
-                  disabled={pendingAction === "place-bet" || !betForm.amount}
-                >
-                  {pendingAction === "place-bet" ? "Submitting…" : "Place Bet"}
-                </button>
-              </div>
-
-              <div className="form">
-                <h3>Claim Payout</h3>
-                <p className="hint">
-                  Available after the oracle settles and your position wins.
-                </p>
-                <button
-                  onClick={handleClaimPayout}
-                  disabled={pendingAction === "claim"}
-                >
-                  {pendingAction === "claim" ? "Submitting…" : "Claim"}
-                </button>
-              </div>
-
-              {isOwner && (
-                <div className="form">
-                  <h3>Oracle Request</h3>
-                  <p className="hint">
-                    Payload: {assetLabel(selectedMarket.id)}/USD — responder will
-                    use this to fetch price data.
-                  </p>
-                  <button
-                    onClick={handleRequestOracle}
-                    disabled={pendingAction === "request-oracle"}
-                  >
-                    {pendingAction === "request-oracle"
-                      ? "Requesting…"
-                      : "Trigger Oracle"}
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="empty">Select a market to view details.</p>
-          )}
-        </section>
-
-        <aside className="panel owner">
-          <h2>Create Market</h2>
-          <div className="form">
-            <div className="field-group">
-              <label htmlFor="asset">Asset</label>
-              <select
-                id="asset"
-                value={createForm.asset}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    asset: event.target.value as AssetOption,
-                  }))
-                }
-              >
-                {ASSETS.map((asset) => (
-                  <option key={asset} value={asset}>
-                    {asset}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field-group price-row">
-              <div>
-                <span className="label">Spot price</span>
-                <div className="spot-line">
-                  {priceLoading ? (
-                    <span className="spot-value">Loading…</span>
-                  ) : createAssetData ? (
-                    <span className="spot-value">
-                      ${createAssetData.price.toFixed(2)}
-                    </span>
-                  ) : (
-                    <span className="spot-value">No data</span>
-                  )}
+                  <div className="quick-amounts">
+                    {QUICK_AMOUNTS.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => handleQuickAmount(amount)}
+                      >
+                        +{amount}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="trade-meta">
+                    <span className="label">Potential payout</span>
+                    <strong>
+                      {potentialPayout > 0 ? `${potentialPayout.toFixed(3)} AE` : "—"}
+                    </strong>
+                  </div>
                   <button
                     type="button"
-                    className="refresh-price"
-                    onClick={() => void fetchAssetData(createForm.asset, true)}
+                    onClick={handlePlaceBet}
+                    disabled={pendingAction === "place-bet" || !betForm.amount}
                   >
-                    Refresh
+                    {pendingAction === "place-bet" ? "Submitting…" : "Trade"}
+                  </button>
+                  <p className="trade-note">
+                    By trading, you supply AE liquidity. Pools rebalance when the oracle closes the market.
+                  </p>
+                </aside>
+              </section>
+
+              <section className="market-actions">
+                <div className="form action-card">
+                  <h3>Claim payout</h3>
+                  <p className="hint">
+                    Available after the oracle settles and your position wins.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleClaimPayout}
+                    disabled={pendingAction === "claim"}
+                  >
+                    {pendingAction === "claim" ? "Submitting…" : "Claim"}
                   </button>
                 </div>
-                {priceError && <p className="hint error-text">{priceError}</p>}
-              </div>
-              <label className="auto-toggle">
-                <input
-                  type="checkbox"
-                  checked={autoBarriers}
-                  onChange={(event) => setAutoBarriers(event.target.checked)}
-                />
-                Auto barriers
-              </label>
-            </div>
-            <div className="field-group">
-              <label htmlFor="barrier-up">Barrier Up</label>
-              <input
-                id="barrier-up"
-                type="number"
-                value={createForm.barrierUp}
-                disabled={autoBarriers}
-                onChange={handleBarrierChange("barrierUp")}
-              />
-            </div>
-            <div className="field-group">
-              <label htmlFor="barrier-down">Barrier Down</label>
-              <input
-                id="barrier-down"
-                type="number"
-                value={createForm.barrierDown}
-                disabled={autoBarriers}
-                onChange={handleBarrierChange("barrierDown")}
-              />
-            </div>
-            <button
-              type="button"
-              className="secondary-link use-suggested"
-              onClick={handleUseSuggestedBarriers}
-            >
-              Use suggested range
-            </button>
-            <div className="field-group">
-              <label htmlFor="duration">Duration</label>
-              <select
-                id="duration"
-                value={createForm.duration}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    duration: event.target.value,
-                  }))
-                }
-              >
-                {DURATION_OPTIONS.map((option) => (
-                  <option key={option.blocks} value={option.blocks}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={createForm.isRace}
-                onChange={(event) =>
-                  setCreateForm((prev) => ({
-                    ...prev,
-                    isRace: event.target.checked,
-                  }))
-                }
-              />
-              Race market (requires both barriers)
-            </label>
-            <p className="hint">
-              Rake: {rakePercentLabel}% goes to the house on each settlement.
-            </p>
-            <button
-              onClick={handleCreateMarket}
-              disabled={pendingAction === "create-market" || !isOwner}
-            >
-              {pendingAction === "create-market"
-                ? "Creating…"
-                : "Create Market"}
-            </button>
-            {!isOwner && (
-              <p className="hint">Only the owner can create markets.</p>
-            )}
-          </div>
 
-          <div className="info">
-            <h3>Oracle</h3>
-            <p>
-              Oracle ID:
-              <span className="mono"> {contracts.oracleId}</span>
-            </p>
-            <p>Query fee: {Number(contracts.oracleQueryFee) / 1e18} AE</p>
-            <p className="hint">
-              Keep `oracleResponder.js` running so price requests are settled
-              automatically.
-            </p>
-          </div>
-        </aside>
-      </main>
+                {isOwner && (
+                  <div className="form action-card">
+                    <h3>Oracle request</h3>
+                    <p className="hint">
+                      Payload: {assetLabel(selectedMarket.id)}/USD — responder will use this to fetch price data.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleRequestOracle}
+                      disabled={pendingAction === "request-oracle"}
+                    >
+                      {pendingAction === "request-oracle" ? "Requesting…" : "Trigger Oracle"}
+                    </button>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+        </main>
+      )}
 
       {(errorMessage || successMessage) && (
         <div className="toast">
