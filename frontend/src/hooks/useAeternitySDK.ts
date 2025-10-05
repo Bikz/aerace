@@ -1,6 +1,7 @@
 import {
   AeSdkAepp,
   BrowserWindowMessageConnection,
+  CompilerHttp,
   Encoded,
   Node,
   SUBSCRIPTION_TYPES,
@@ -22,6 +23,7 @@ const useAeternitySDK = () => {
       new AeSdkAepp({
         name: "aerace-frontend",
         nodes: [{ name: network.id, instance: new Node(network.url) }],
+        onCompiler: new CompilerHttp(network.compilerUrl),
         onAddressChange: ({ current }) => {
           setAddress(Object.keys(current)[0] as Encoded.AccountAddress);
         },

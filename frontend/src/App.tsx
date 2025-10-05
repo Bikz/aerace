@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ComponentType } from "react";
 import type { Encoded } from "@aeternity/aepp-sdk";
 import { AE_AMOUNT_FORMATS } from "@aeternity/aepp-sdk";
 import {
@@ -81,6 +81,13 @@ type AssetSeries = {
   fetchedAt: number;
 };
 
+const ResponsiveContainerComponent = ResponsiveContainer as unknown as ComponentType<any>;
+const AreaChartComponent = AreaChart as unknown as ComponentType<any>;
+const AreaComponent = Area as unknown as ComponentType<any>;
+const TooltipComponent = RechartsTooltip as unknown as ComponentType<any>;
+const XAxisComponent = XAxis as unknown as ComponentType<any>;
+const YAxisComponent = YAxis as unknown as ComponentType<any>;
+
 const PriceTooltip = ({
   active,
   payload,
@@ -156,7 +163,7 @@ const App = () => {
   const [createForm, setCreateForm] = useState<CreateFormState>(defaultCreateForm);
   const [betForm, setBetForm] = useState({ amount: "", onUp: true });
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [assetData, setAssetData] = useState<Record<AssetOption, AssetSeries>>({});
+  const [assetData, setAssetData] = useState<Partial<Record<AssetOption, AssetSeries>>>({});
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | undefined>();
   const [autoBarriers, setAutoBarriers] = useState(true);
@@ -299,10 +306,10 @@ const App = () => {
 
     const loadContract = async () => {
       try {
-        const instance = await aeSdk.initializeContract({
+        const instance = (await aeSdk.initializeContract({
           sourceCode: barrierOptionsSource,
           address: contracts.barrierAddress as Encoded.ContractAddress,
-        });
+        })) as any;
         setContractInstance(instance);
         try {
           const rakeResult = await instance.methods.getRake();
@@ -760,10 +767,10 @@ const App = () => {
               </div>
 
               {selectedAssetData && selectedAssetData.series.length > 0 && (
-                <div className="chart-card">
-                  <div className="chart-header">
-                    <div>
-                      <h3>{selectedMarket.asset}/USD</h3>
+              <div className="chart-card">
+                <div className="chart-header">
+                  <div>
+                    <h3>{selectedMarket.asset}/USD</h3>
                       <p>
                         Spot ${selectedAssetData.price.toFixed(2)} · {selectedAssetData.series.length} points
                       </p>
@@ -776,26 +783,26 @@ const App = () => {
                       Refresh
                     </button>
                   </div>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={selectedAssetData.series}>
+                  <ResponsiveContainerComponent width="100%" height={200}>
+                    <AreaChartComponent data={selectedAssetData.series}>
                       <defs>
                         <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.65} />
                           <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.05} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="time" hide interval="preserveStartEnd" />
-                      <YAxis hide domain={["auto", "auto"]} />
-                      <RechartsTooltip content={<PriceTooltip />} />
-                      <Area
+                      <XAxisComponent dataKey="time" hide interval="preserveStartEnd" />
+                      <YAxisComponent hide domain={["auto", "auto"]} />
+                      <TooltipComponent content={<PriceTooltip />} />
+                      <AreaComponent
                         type="monotone"
                         dataKey="value"
                         stroke="var(--accent)"
                         strokeWidth={2}
                         fill="url(#priceGradient)"
                       />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                    </AreaChartComponent>
+                  </ResponsiveContainerComponent>
                 </div>
               )}
 

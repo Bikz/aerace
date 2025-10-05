@@ -29,9 +29,10 @@ jest.mock("./hooks/useAeternitySDK", () => {
 let fetchMock: jest.MockedFunction<typeof fetch>;
 
 beforeEach(() => {
-  fetchMock = jest.fn(async () => ({
-    json: async () => ({}),
-  })) as unknown as typeof fetch;
+  fetchMock = jest
+    .fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      new Response(JSON.stringify({})),
+    ) as jest.MockedFunction<typeof fetch>;
   globalThis.fetch = fetchMock;
 });
 
