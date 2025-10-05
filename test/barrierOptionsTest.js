@@ -15,8 +15,9 @@ const AE = 10n ** 18n;
 const UP_BET = AE / 10n; // 0.1 AE
 const DOWN_BET = AE / 20n; // 0.05 AE
 const ORACLE_FEE = AE / 100n; // 0.01 AE
-const QUERY_TTL = 100;
-const RESPONSE_TTL = 50;
+const ORACLE_REGISTER_TTL = 50;
+const QUERY_TTL = 5;
+const RESPONSE_TTL = 3;
 
 function findEvent(tx, name) {
   return tx.decodedEvents.find((event) => event.name === name);
@@ -50,6 +51,18 @@ describe("BarrierOptions", () => {
       onAccount: owner,
     });
 
+    const oracleFs = await getFileSystem(ORACLE_SOURCE);
+    const oracleSource = utils.getContractContent(ORACLE_SOURCE);
+    oracleContract = await Contract.initialize({
+      ...aeSdk.getContext(),
+      sourceCode: oracleSource,
+      fileSystem: oracleFs,
+    });
+
+    await oracleContract.init(ORACLE_FEE, ORACLE_REGISTER_TTL, {
+      onAccount: owner,
+    });
+
     await utils.createSnapshot(aeSdk);
   });
 
@@ -63,7 +76,7 @@ describe("BarrierOptions", () => {
     const barrierDown = 100;
     const duration = 50;
 
-    await barrierContract.createMarket(barrierUp, ["Some", barrierDown], duration, false, {
+    await barrierContract.createMarket(barrierUp, barrierDown, duration, false, {
       onAccount: owner,
     });
 
@@ -124,7 +137,7 @@ describe("BarrierOptions", () => {
       }
     );
 
-    await barrierContract.createMarket(barrierUp, ["Some", barrierDown], duration, true, {
+    await barrierContract.createMarket(barrierUp, barrierDown, duration, true, {
       onAccount: owner,
     });
 
@@ -146,7 +159,16 @@ describe("BarrierOptions", () => {
     const requestEvent = findEvent(requestTx, "OraclePriceRequested");
     assert.isDefined(requestEvent, "OraclePriceRequested event should fire");
 
-    const queryId = requestEvent.args[1];
+    const { decodedResult: storedQueryOption } =
+      await barrierContract.getOracleQuery(marketId);
+
+    const queryId = Array.isArray(storedQueryOption)
+      ? (assert.equal(
+          storedQueryOption[0],
+          "Some",
+          "Expected query to be saved before oracle response",
+        ), storedQueryOption[1])
+      : storedQueryOption;
 
     await oracleContract.respond(queryId, 210, {
       onAccount: owner,
@@ -173,7 +195,9 @@ describe("BarrierOptions", () => {
       /ERR_NOT_WINNER/
     );
 
-    const { decodedResult: storedQuery } = await barrierContract.getOracleQuery(marketId);
+    const { decodedResult: storedQuery } = await barrierContract.getOracleQuery(
+      marketId,
+    );
     const isNoneOption =
       storedQuery === "None" ||
       (Array.isArray(storedQuery) && storedQuery[0] === "None") ||
