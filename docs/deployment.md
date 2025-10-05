@@ -1,55 +1,72 @@
-# BarrierOptions Deployment Guide
+# Barrier Options Deployment Guide
 
-This guide covers compiling and deploying the `BarrierOptions` contract with the
-Node.js helper (`scripts/deployBarrierOptions.js`) and verifying it on æScan.
+This guide walks through deploying the contracts to æternity testnet and wiring the off-chain oracle responder.
 
 ## 1. Prerequisites
+- Node.js ≥ 18, npm
+- `npm install` completed
+- æternity account with testnet funds (`DEPLOYER_SECRET_KEY` / `ak_…`)
+- Access to the æternity compiler (`https://v8.compiler.aepps.com`) and node (`https://testnet.aeternity.io`)
 
-- Node.js ≥ 18
-- Environment variables:
-  - `DEPLOYER_SECRET_KEY` – private key of the deploying account (prefixed with `sk_`)
-  - Optional overrides:
-    - `AE_NODE_URL` (defaults to `https://testnet.aeternity.io`)
-    - `AE_COMPILER_URL` (defaults to `https://v8.compiler.aepps.com`)
-    - `CONTRACT_PATH` (defaults to `./contracts/BarrierOptions.aes`)
-- Project dependencies installed: `npm install`
-
-## 2. Deploy the contract
-
+## 2. Deploy `ExchangeOracle`
 ```bash
-export DEPLOYER_SECRET_KEY=sk_...
-# optional overrides
-# export AE_NODE_URL=https://testnet.aeternity.io
-# export AE_COMPILER_URL=https://v8.compiler.aepps.com
-
-node scripts/deployBarrierOptions.js
+env \
+  DEPLOYER_SECRET_KEY=sk_... \
+  AE_NODE_URL=https://testnet.aeternity.io \
+  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  ORACLE_QUERY_FEE=1000000000000000 \
+  ORACLE_REGISTER_TTL=500 \
+  node scripts/deployOracle.js
 ```
+Output: oracle contract address (`ct_…`) and oracle ID (`ok_…`).
 
-The script outputs:
-- Contract address (`ct_...`)
-- Deployer (owner) account
-- Deployment transaction hash
+## 3. Deploy `BarrierOptions`
+```bash
+env \
+  DEPLOYER_SECRET_KEY=sk_... \
+  AE_NODE_URL=https://testnet.aeternity.io \
+  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  node scripts/deployBarrierOptions.js
+```
+Output: barrier contract address (`ct_…`).
 
-Record the address for oracle configuration and later verification.
+## 4. Configure `BarrierOptions` to use the oracle
+```bash
+env \
+  DEPLOYER_SECRET_KEY=sk_... \
+  AE_NODE_URL=https://testnet.aeternity.io \
+  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  BARRIER_CONTRACT_ADDRESS=ct_... \
+  PRICE_ORACLE_ID=ok_... \
+  ORACLE_QUERY_FEE=1000000000000000 \
+  ORACLE_QUERY_TTL=5 \
+  ORACLE_RESPONSE_TTL=3 \
+  node scripts/configureBarrierOracle.js
+```
+`OracleConfiguredEvent` confirms the settings on-chain.
 
-## 3. Verify on æScan
+## 5. Request prices & settle markets
+1. Create a market via `createMarket`. Bettors call `placeBet`.
+2. Owner (or backend) sends `requestOraclePrice` with a payload string (e.g., `"AE/USD"`).
+3. Run the off-chain responder (next section) so the oracle responds and `checkMarketFromOracle` is triggered.
+4. Winners call `claimPayout` once the market status updates.
 
-1. Navigate to [æScan Smart Contract Verification](https://aescan.io/contracts/verify).
-2. Choose the network (testnet or mainnet) that matches your deployment.
-3. Enter the deployed contract address.
-4. Upload `contracts/BarrierOptions.aes` as the source file.
-5. Provide compiler version `v8` (or the version you used) and ABI data if requested
-   (can be extracted from the deployment script output or via `aepp-sdk`).
-6. Submit the verification. æScan will match the compiled bytecode and report
-   success once validated.
+## 6. Oracle responder
+Keep `scripts/oracleResponder.js` running to answer queries and extend TTL:
+```bash
+env \
+  DEPLOYER_SECRET_KEY=sk_... \
+  AE_NODE_URL=https://testnet.aeternity.io \
+  AE_COMPILER_URL=https://v8.compiler.aepps.com \
+  ORACLE_CONTRACT_ADDRESS=ct_... \
+  BARRIER_CONTRACT_ADDRESS=ct_... \
+  ORACLE_EXTEND_TTL=50 \
+  ORACLE_POLL_INTERVAL=15000 \
+  node scripts/oracleResponder.js
+```
+The responder fetches AE/USD from CoinGecko (fallback constant) and auto-extends the oracle TTL. If you stop the responder, extend manually with `oracleContract.extend` to keep the oracle alive.
 
-## 4. Post-deployment steps
-
-- Run `node scripts/configureBarrierOracle.js` to point the contract at your
-  oracle.
-- Log deployment metadata (commit hash, network, owner address) for future audits.
-- Optionally tag the repository or record the contract address in your frontend
-  configuration.
-
-With these steps complete, `BarrierOptions` is deployed, verified, and ready for
-integration with the oracle workflow described in `docs/oracle_setup.md`.
+## 7. References
+- README for high-level architecture and command summary.
+- `docs/oracle_setup.md` for additional background on oracle wiring.
+- æScan for deployed contract verification.
