@@ -49,14 +49,9 @@ async function loadContract() {
   return { contract, account };
 }
 
-async function ensureMarketExists(contract, account) {
+async function createDemoMarket(contract, account) {
   const counter = await contract.getMarketCounter();
-  const existing = Number(counter.decodedResult ?? 0);
-  if (existing > 0) {
-    console.log(`Market counter already at ${existing}. Skipping creation.`);
-    return existing;
-  }
-
+  console.log(`Current market counter: ${counter.decodedResult}`);
   console.log("Creating demo market...");
   const tx = await contract.createMarket(
     DEMO_CONFIG.asset,
@@ -69,7 +64,8 @@ async function ensureMarketExists(contract, account) {
   console.log(`  tx hash: ${tx.hash}`);
 
   const newCounter = await contract.getMarketCounter();
-  return Number(newCounter.decodedResult ?? existing);
+  console.log(`Updated market counter: ${newCounter.decodedResult}`);
+  return Number(newCounter.decodedResult ?? 0);
 }
 
 async function seedLiquidity(contract, account, marketId) {
@@ -84,14 +80,12 @@ async function seedLiquidity(contract, account, marketId) {
 
 async function main() {
   const { contract, account } = await loadContract();
-  const marketCount = await ensureMarketExists(contract, account);
+  const marketCount = await createDemoMarket(contract, account);
 
-  if (marketCount > 0) {
-    try {
-      await seedLiquidity(contract, account, marketCount);
-    } catch (error) {
-      console.warn("Unable to seed liquidity (maybe already seeded?):", error.message ?? error);
-    }
+  try {
+    await seedLiquidity(contract, account, marketCount);
+  } catch (error) {
+    console.warn("Unable to seed liquidity (maybe already seeded?):", error.message ?? error);
   }
 
   console.log("Demo market ready.");
