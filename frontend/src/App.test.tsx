@@ -1,5 +1,52 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+jest.mock(
+  "@typespec/ts-http-runtime/internal/logger",
+  () => {
+    const makeDebugger = () => {
+      const stub: any = jest.fn();
+      stub.enabled = false;
+      stub.destroy = jest.fn(() => true);
+      stub.log = jest.fn();
+      stub.namespace = "test";
+      stub.extend = jest.fn(() => stub);
+      return stub;
+    };
+
+    const logger = {
+      info: makeDebugger(),
+      warning: makeDebugger(),
+      error: makeDebugger(),
+      verbose: makeDebugger(),
+    };
+
+    return {
+      createLoggerContext: () => ({
+        logger,
+        setLogLevel: jest.fn(),
+        getLogLevel: jest.fn(() => undefined),
+        createClientLogger: () => makeDebugger(),
+      }),
+    };
+  },
+  { virtual: true },
+);
+
+jest.mock(
+  "@typespec/ts-http-runtime/internal/policies",
+  () => ({
+    createDefaultHttpClient: () => ({ sendRequest: jest.fn(async () => ({ status: 200 })) }),
+  }),
+  { virtual: true },
+);
+
+jest.mock(
+  "@typespec/ts-http-runtime/internal/util",
+  () => ({ createAbortController: () => new AbortController() }),
+  { virtual: true },
+);
+
 import App from "./App";
 
 const mockContract = {
