@@ -76,7 +76,7 @@ describe("BarrierOptions", () => {
     const barrierDown = 100;
     const duration = 50;
 
-    await barrierContract.createMarket(barrierUp, barrierDown, duration, false, {
+    await barrierContract.createMarket("AE", barrierUp, barrierDown, duration, false, {
       onAccount: owner,
     });
 
@@ -102,10 +102,12 @@ describe("BarrierOptions", () => {
     assert.isDefined(payoutEvent, "Payout event should be emitted");
 
     const payoutAmount = BigInt(payoutEvent.args[2]);
+    const expectedPayout =
+      (UP_BET + DOWN_BET) - ((UP_BET + DOWN_BET) * 20000n) / 1000000n;
     assert.equal(
       payoutAmount.toString(),
-      (UP_BET + DOWN_BET).toString(),
-      "Winner should receive full pool"
+      expectedPayout.toString(),
+      "Winner should receive pool minus rake"
     );
 
     await assert.isRejected(
@@ -137,7 +139,7 @@ describe("BarrierOptions", () => {
       }
     );
 
-    await barrierContract.createMarket(barrierUp, barrierDown, duration, true, {
+    await barrierContract.createMarket("BTC", barrierUp, barrierDown, duration, true, {
       onAccount: owner,
     });
 
@@ -151,7 +153,7 @@ describe("BarrierOptions", () => {
       onAccount: bettorDown,
     });
 
-    const requestTx = await barrierContract.requestOraclePrice(marketId, "AE/USD", {
+    const requestTx = await barrierContract.requestOraclePrice(marketId, "BTC/USD", {
       amount: ORACLE_FEE,
       onAccount: owner,
     });
@@ -184,10 +186,12 @@ describe("BarrierOptions", () => {
 
     const payoutEvent = findEvent(claimWinner, "PayoutClaimed");
     const payoutAmount = BigInt(payoutEvent.args[2]);
+    const expectedPayout =
+      (UP_BET + DOWN_BET) - ((UP_BET + DOWN_BET) * 20000n) / 1000000n;
     assert.equal(
       payoutAmount.toString(),
-      (UP_BET + DOWN_BET).toString(),
-      "Oracle settlement should pay winning side"
+      expectedPayout.toString(),
+      "Oracle settlement should pay winning side minus rake"
     );
 
     await assert.isRejected(

@@ -1,7 +1,8 @@
 {
-  "name": "aepp-boilerplate-react",
+  "name": "aerace-frontend",
   "version": "0.1.1",
   "private": true,
+  "description": "React client for the AERace barrier options platform",
   "dependencies": {
     "@aeternity/aepp-sdk": "^13.0.1",
     "@testing-library/jest-dom": "^5.16.5",
@@ -14,6 +15,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
+    "recharts": "^3.2.1",
     "typescript": "^4.9.5",
     "web-vitals": "^3.3.1"
   },

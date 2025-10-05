@@ -4,19 +4,18 @@
  * @returns {Object} æ node config
  */
 const networks = {
-	development: {
-		id: "ae_uat",
-		url: "https://testnet.aeternity.io",
-		compilerUrl: "https://v8.compiler.aepps.com",
-
-	},
-	production: {
-		id: "ae_mainnet",
-		url: "https://mainnet.aeternity.io",
-		compilerUrl: "https://v8.compiler.aepps.com",
-	},
+  development: {
+    id: "ae_uat",
+    url: "https://testnet.aeternity.io",
+    compilerUrl: "https://v8.compiler.aepps.com",
+  },
+  production: {
+    id: "ae_mainnet",
+    url: "https://mainnet.aeternity.io",
+    compilerUrl: "https://v8.compiler.aepps.com",
+  },
 } as const;
 
-const mode = (process.env.REACT_APP_NODE_ENV ?? 'development') as keyof typeof networks;
+const mode = (process.env.REACT_APP_NODE_ENV ?? "development") as keyof typeof networks;
 
 export default networks[mode];
