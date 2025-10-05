@@ -32,217 +32,214 @@ contract BarrierOptions =
     , oracle_response_ttl : int
     , oracle_queries      : map(int, price_query) }
 
-    event MarketCreated(id : int, barrier_up : int, barrier_down : option(int), expiry : int, is_race : bool)
-    event BetPlaced(id : int, bettor : address, on_up : bool, amount : int)
-    event TouchedUp(id : int, price : int)
-    event TouchedDown(id : int, price : int)
-    event MarketExpired(id : int)
-    event PayoutClaimed(id : int, account : address, payout : int)
-    event OracleConfigured(fee : int, query_ttl : int, response_ttl : int)
-    event OraclePriceRequested(id : int, query : price_query, payload : string)
-    event OraclePriceConsumed(id : int, price : int)
+  datatype event =
+    MarketCreated(int, int, option(int), int, bool)
+    | BetPlaced(int, address, bool, int)
+    | TouchedUp(int, int)
+    | TouchedDown(int, int)
+    | MarketExpired(int)
+    | PayoutClaimed(int, address, int)
+    | OracleConfigured(int, int, int)
+    | OraclePriceRequested(int, price_query, string)
+    | OraclePriceConsumed(int, int)
 
-    entrypoint init() = {
-        owner = Call.caller,
-        market_counter = 0,
-        markets = {},
-        oracle = None,
-        oracle_fee = 0,
-        oracle_query_ttl = 0,
-        oracle_response_ttl = 0,
-        oracle_queries = {}
-    }
+  entrypoint init() =
+    { owner = Call.caller
+    , market_counter = 0
+    , markets = {}
+    , oracle = None
+    , oracle_fee = 0
+    , oracle_query_ttl = 0
+    , oracle_response_ttl = 0
+    , oracle_queries = {} }
 
-    stateful entrypoint configureOracle(oracleAddr : price_oracle, queryFee : int, queryTtl : int, responseTtl : int) =
-        require(Call.caller == state.owner, "ERR_NOT_OWNER")
-        require(queryFee > 0, "ERR_INVALID_ORACLE_FEE")
-        require(queryTtl > 0, "ERR_INVALID_QUERY_TTL")
-        require(responseTtl > 0, "ERR_INVALID_RESPONSE_TTL")
-        let on_chain_fee = Oracle.query_fee(oracleAddr)
-        let effective_fee = if(on_chain_fee > queryFee) on_chain_fee else queryFee
-        put(state{
-            oracle = Some(oracleAddr),
-            oracle_fee = effective_fee,
-            oracle_query_ttl = queryTtl,
-            oracle_response_ttl = responseTtl,
-            oracle_queries = {}
-        })
-        emit(OracleConfigured(effective_fee, queryTtl, responseTtl))
+  stateful entrypoint configureOracle(oracleAddr : price_oracle, queryFee : int, queryTtl : int, responseTtl : int) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    require(queryFee > 0, "ERR_INVALID_ORACLE_FEE")
+    require(queryTtl > 0, "ERR_INVALID_QUERY_TTL")
+    require(responseTtl > 0, "ERR_INVALID_RESPONSE_TTL")
+    let on_chain_fee = Oracle.query_fee(oracleAddr)
+    let effective_fee = if(on_chain_fee > queryFee) on_chain_fee else queryFee
+    put(state{
+      oracle = Some(oracleAddr),
+      oracle_fee = effective_fee,
+      oracle_query_ttl = queryTtl,
+      oracle_response_ttl = responseTtl,
+      oracle_queries = {}
+    })
+    Chain.event(OracleConfigured(effective_fee, queryTtl, responseTtl))
 
-    payable stateful entrypoint requestOraclePrice(id : int, payload : string) =
-        require(Call.caller == state.owner, "ERR_NOT_OWNER")
-        require(payload != "", "ERR_EMPTY_PAYLOAD")
-        let market = get_market(id)
-        require(market.status == "open", "ERR_MARKET_CLOSED")
-        require(Chain.block_height < market.expiry, "ERR_MARKET_EXPIRED")
-        let oracle = get_oracle()
-        let required_fee = Oracle.query_fee(oracle)
-        let fee_to_pay = if(required_fee > state.oracle_fee) required_fee else state.oracle_fee
-        require(Call.value >= fee_to_pay, "ERR_INSUFFICIENT_QUERY_FEE")
-        require(state.oracle_query_ttl > 0, "ERR_ORACLE_NOT_CONFIGURED")
-        require(state.oracle_response_ttl > 0, "ERR_ORACLE_NOT_CONFIGURED")
-        switch(Map.lookup(id, state.oracle_queries))
-            None => ()
-            Some(_) => abort("ERR_QUERY_EXISTS")
-        let query = Oracle.query(oracle, payload, fee_to_pay, RelativeTTL(state.oracle_query_ttl), RelativeTTL(state.oracle_response_ttl))
-        let updated_queries = Map.insert(id, query, state.oracle_queries)
-        put(state{ oracle_queries = updated_queries })
-        let excess = Call.value - fee_to_pay
-        if(excess > 0)
-            Chain.spend(Call.caller, excess)
-        emit(OraclePriceRequested(id, query, payload))
+  payable stateful entrypoint requestOraclePrice(id : int, payload : string) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    require(payload != "", "ERR_EMPTY_PAYLOAD")
+    let market = get_market(id)
+    require(market.status == "open", "ERR_MARKET_CLOSED")
+    require(Chain.block_height < market.expiry, "ERR_MARKET_EXPIRED")
+    let oracle = get_oracle()
+    let required_fee = Oracle.query_fee(oracle)
+    let fee_to_pay = if(required_fee > state.oracle_fee) required_fee else state.oracle_fee
+    require(Call.value >= fee_to_pay, "ERR_INSUFFICIENT_QUERY_FEE")
+    require(state.oracle_query_ttl > 0, "ERR_ORACLE_NOT_CONFIGURED")
+    require(state.oracle_response_ttl > 0, "ERR_ORACLE_NOT_CONFIGURED")
+    switch(Map.lookup(id, state.oracle_queries))
+      None => ()
+      Some(_) => abort("ERR_QUERY_EXISTS")
+    let query = Oracle.query(oracle, payload, fee_to_pay, RelativeTTL(state.oracle_query_ttl), RelativeTTL(state.oracle_response_ttl))
+    put(state{ oracle_queries = Map.insert(id, query, state.oracle_queries) })
+    let excess = Call.value - fee_to_pay
+    if(excess > 0)
+      Chain.spend(Call.caller, excess)
+    Chain.event(OraclePriceRequested(id, query, payload))
 
-    stateful entrypoint checkMarketFromOracle(id : int) =
-        require(Call.caller == state.owner, "ERR_NOT_OWNER")
-        let oracle = get_oracle()
-        let query = get_oracle_query(id)
-        switch(Oracle.get_answer(oracle, query))
-            None => abort("ERR_ORACLE_PENDING")
-            Some(price) =>
-                require(price >= 0, "ERR_INVALID_PRICE")
-                settle_market_with_price(id, price, true)
-                emit(OraclePriceConsumed(id, price))
-
-    stateful entrypoint createMarket(barrierUp : int, barrierDown : option(int), duration : int, isRace : bool) =
-        require(Call.caller == state.owner, "ERR_NOT_OWNER")
-        require(barrierUp > 0, "ERR_INVALID_BARRIER_UP")
-        require(duration > 0, "ERR_INVALID_DURATION")
-        let has_barrier_down =
-            switch(barrierDown)
-                None => false
-                Some(_) => true
-        require((not isRace) or has_barrier_down, "ERR_BARRIER_DOWN_REQUIRED")
-        let new_id = state.market_counter + 1
-        let expiry = Chain.block_height + duration
-        let new_market = {
-            id = new_id,
-            barrier_up = barrierUp,
-            barrier_down = barrierDown,
-            expiry = expiry,
-            is_race = isRace,
-            status = "open",
-            total_up = 0,
-            total_down = 0,
-            bets = {}
-        }
-        let updated_markets = Map.insert(new_id, new_market, state.markets)
-        put(state{ market_counter = new_id, markets = updated_markets })
-        emit(MarketCreated(new_id, barrierUp, barrierDown, expiry, isRace))
-
-    payable stateful entrypoint placeBet(id : int, onUp : bool) =
-        let market = get_market(id)
-        require(market.status == "open", "ERR_MARKET_CLOSED")
-        require(Chain.block_height < market.expiry, "ERR_MARKET_EXPIRED")
-        require(Call.value > 0, "ERR_ZERO_BET")
-        let existing_bet = Map.lookup(Call.caller, market.bets)
-        switch(existing_bet)
-            None => ()
-            Some(b) => require(b.on_up == onUp, "ERR_SWITCH_SIDE")
-        let merged_amount =
-            switch(existing_bet)
-                None => Call.value
-                Some(b) => b.amount + Call.value
-        let updated_bet = {
-            on_up = onUp,
-            amount = merged_amount
-        }
-        let updated_bets = Map.insert(Call.caller, updated_bet, market.bets)
-        let updated_market =
-            if(onUp)
-                market{ bets = updated_bets, total_up = market.total_up + Call.value }
-            else
-                market{ bets = updated_bets, total_down = market.total_down + Call.value }
-        let updated_markets = Map.insert(id, updated_market, state.markets)
-        put(state{ markets = updated_markets })
-        emit(BetPlaced(id, Call.caller, onUp, Call.value))
-
-    stateful entrypoint checkMarket(id : int, price : int) =
-        require(Call.caller == state.owner, "ERR_NOT_OWNER")
+  stateful entrypoint checkMarketFromOracle(id : int) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    let oracle = get_oracle()
+    let query = get_oracle_query(id)
+    switch(Oracle.get_answer(oracle, query))
+      None => abort("ERR_ORACLE_PENDING")
+      Some(price) =>
         require(price >= 0, "ERR_INVALID_PRICE")
-        settle_market_with_price(id, price, false)
+        settle_market_with_price(id, price, true)
+        Chain.event(OraclePriceConsumed(id, price))
 
-    payable stateful entrypoint claimPayout(id : int) =
-        let market = get_market(id)
-        require(market.status != "open", "ERR_MARKET_NOT_RESOLVED")
-        let bet =
-            switch(Map.lookup(Call.caller, market.bets))
-                None => abort("ERR_NO_BET")
-                Some(b) => b
-        let winners_on_up =
-            switch(market.status)
-                "touched_up" => true
-                "touched_down" => false
-                "expired" => false
-                _ => abort("ERR_UNSUPPORTED_STATUS")
-        let is_winner = if(winners_on_up) bet.on_up else not bet.on_up
-        require(is_winner, "ERR_NOT_WINNER")
-        let total_pool = market.total_up + market.total_down
-        let winning_total = if(winners_on_up) market.total_up else market.total_down
-        require(winning_total > 0, "ERR_NO_WINNERS")
-        let raw_payout = bet.amount * total_pool div winning_total
-        let payout = apply_fee(raw_payout)
-        require(payout > 0, "ERR_ZERO_PAYOUT")
-        require(Chain.balance(Contract.address) >= payout, "ERR_CONTRACT_BALANCE")
-        Chain.spend(Call.caller, payout)
-        let cleaned_bets = Map.delete(Call.caller, market.bets)
-        let updated_market = market{ bets = cleaned_bets }
-        let updated_markets = Map.insert(id, updated_market, state.markets)
-        put(state{ markets = updated_markets })
-        emit(PayoutClaimed(id, Call.caller, payout))
+  stateful entrypoint createMarket(barrierUp : int, barrierDown : option(int), duration : int, isRace : bool) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    require(barrierUp > 0, "ERR_INVALID_BARRIER_UP")
+    require(duration > 0, "ERR_INVALID_DURATION")
+    let has_barrier_down =
+      switch(barrierDown)
+        None => false
+        Some(_) => true
+    require((not isRace) or has_barrier_down, "ERR_BARRIER_DOWN_REQUIRED")
+    let new_id = state.market_counter + 1
+    let expiry = Chain.block_height + duration
+    let new_market =
+      { id = new_id
+      , barrier_up = barrierUp
+      , barrier_down = barrierDown
+      , expiry = expiry
+      , is_race = isRace
+      , status = "open"
+      , total_up = 0
+      , total_down = 0
+      , bets = {} }
+    put(state{
+      market_counter = new_id,
+      markets = Map.insert(new_id, new_market, state.markets)
+    })
+    Chain.event(MarketCreated(new_id, barrierUp, barrierDown, expiry, isRace))
 
-    stateful function settle_market_with_price(id : int, price : int, drop_query : bool) =
-        let market = get_market(id)
-        let updated_market = evaluate_market(market, price)
-        let updated_markets = Map.insert(id, updated_market, state.markets)
-        let updated_queries =
-            if(drop_query)
-                Map.delete(id, state.oracle_queries)
-            else
-                state.oracle_queries
-        put(state{ markets = updated_markets, oracle_queries = updated_queries })
+  payable stateful entrypoint placeBet(id : int, onUp : bool) =
+    let market = get_market(id)
+    require(market.status == "open", "ERR_MARKET_CLOSED")
+    require(Chain.block_height < market.expiry, "ERR_MARKET_EXPIRED")
+    require(Call.value > 0, "ERR_ZERO_BET")
+    let existing_bet = Map.lookup(Call.caller, market.bets)
+    switch(existing_bet)
+      None => ()
+      Some(b) => require(b.on_up == onUp, "ERR_SWITCH_SIDE")
+    let merged_amount =
+      switch(existing_bet)
+        None => Call.value
+        Some(b) => b.amount + Call.value
+    let updated_bet =
+      { on_up = onUp
+      , amount = merged_amount }
+    let updated_bets = Map.insert(Call.caller, updated_bet, market.bets)
+    let updated_market =
+      if(onUp)
+        market{ bets = updated_bets, total_up = market.total_up + Call.value }
+      else
+        market{ bets = updated_bets, total_down = market.total_down + Call.value }
+    put(state{ markets = Map.insert(id, updated_market, state.markets) })
+    Chain.event(BetPlaced(id, Call.caller, onUp, Call.value))
 
-    function apply_fee(amount : int) : int =
-        let fee_ppm = 0
-        amount - amount * fee_ppm div 1000000
+  stateful entrypoint checkMarket(id : int, price : int) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    require(price >= 0, "ERR_INVALID_PRICE")
+    settle_market_with_price(id, price, false)
 
-    stateful function evaluate_market(market : market, price : int) : market =
-        if(market.status != "open")
-            market
+  payable stateful entrypoint claimPayout(id : int) =
+    let market = get_market(id)
+    require(market.status != "open", "ERR_MARKET_NOT_RESOLVED")
+    let bet =
+      switch(Map.lookup(Call.caller, market.bets))
+        None => abort("ERR_NO_BET")
+        Some(b) => b
+    let winners_on_up =
+      switch(market.status)
+        "touched_up" => true
+        "touched_down" => false
+        "expired" => false
+        _ => abort("ERR_UNSUPPORTED_STATUS")
+    let is_winner = if(winners_on_up) bet.on_up else not bet.on_up
+    require(is_winner, "ERR_NOT_WINNER")
+    let total_pool = market.total_up + market.total_down
+    let winning_total = if(winners_on_up) market.total_up else market.total_down
+    require(winning_total > 0, "ERR_NO_WINNERS")
+    let raw_payout = bet.amount * total_pool div winning_total
+    let payout = apply_fee(raw_payout)
+    require(payout > 0, "ERR_ZERO_PAYOUT")
+    require(Chain.balance(Contract.address) >= payout, "ERR_CONTRACT_BALANCE")
+    Chain.spend(Call.caller, payout)
+    let cleaned_bets = Map.delete(Call.caller, market.bets)
+    let updated_market = market{ bets = cleaned_bets }
+    put(state{ markets = Map.insert(id, updated_market, state.markets) })
+    Chain.event(PayoutClaimed(id, Call.caller, payout))
+
+  stateful function settle_market_with_price(id : int, price : int, drop_query : bool) =
+    let market = get_market(id)
+    let updated_market = evaluate_market(market, price)
+    let updated_markets = Map.insert(id, updated_market, state.markets)
+    let updated_queries =
+      if(drop_query)
+        Map.delete(id, state.oracle_queries)
+      else
+        state.oracle_queries
+    put(state{ markets = updated_markets, oracle_queries = updated_queries })
+
+  function apply_fee(amount : int) : int =
+    let fee_ppm = 0
+    amount - amount * fee_ppm div 1000000
+
+  stateful function evaluate_market(market : market, price : int) : market =
+    if(market.status != "open")
+      market
+    else
+      let touched_up = price >= market.barrier_up
+      let touched_down =
+        if(market.is_race)
+          switch(market.barrier_down)
+            None => false
+            Some(b) => price <= b
         else
-            let touched_up = price >= market.barrier_up
-            let touched_down =
-                if(market.is_race)
-                    switch(market.barrier_down)
-                        None => false
-                        Some(b) => price <= b
-                else
-                    false
-            if(touched_up)
-                emit(TouchedUp(market.id, price))
-                market{ status = "touched_up" }
-            elif(touched_down)
-                emit(TouchedDown(market.id, price))
-                market{ status = "touched_down" }
-            elif(Chain.block_height >= market.expiry)
-                emit(MarketExpired(market.id))
-                market{ status = "expired" }
-            else
-                market
+          false
+      if(touched_up)
+        Chain.event(TouchedUp(market.id, price))
+        market{ status = "touched_up" }
+      elif(touched_down)
+        Chain.event(TouchedDown(market.id, price))
+        market{ status = "touched_down" }
+      elif(Chain.block_height >= market.expiry)
+        Chain.event(MarketExpired(market.id))
+        market{ status = "expired" }
+      else
+        market
 
-    function get_oracle() : price_oracle =
-        switch(state.oracle)
-            None => abort("ERR_ORACLE_NOT_CONFIGURED")
-            Some(oracle) => oracle
+  function get_oracle() : price_oracle =
+    switch(state.oracle)
+      None => abort("ERR_ORACLE_NOT_CONFIGURED")
+      Some(oracle) => oracle
 
-    entrypoint getOracleQuery(id : int) : option(price_query) =
-        Map.lookup(id, state.oracle_queries)
+  function get_oracle_query(id : int) : price_query =
+    switch(Map.lookup(id, state.oracle_queries))
+      None => abort("ERR_QUERY_NOT_FOUND")
+      Some(query) => query
 
-    function get_oracle_query(id : int) : price_query =
-        switch(Map.lookup(id, state.oracle_queries))
-            None => abort("ERR_QUERY_NOT_FOUND")
-            Some(query) => query
+  entrypoint getOracleQuery(id : int) : option(price_query) =
+    Map.lookup(id, state.oracle_queries)
 
-    function get_market(id : int) : market =
-        switch(Map.lookup(id, state.markets))
-            None => abort("ERR_UNKNOWN_MARKET")
-            Some(market) => market
+  function get_market(id : int) : market =
+    switch(Map.lookup(id, state.markets))
+      None => abort("ERR_UNKNOWN_MARKET")
+      Some(market) => market
