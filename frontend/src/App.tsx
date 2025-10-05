@@ -97,10 +97,6 @@ const PriceTooltip = ({
 
 type AssetOption = (typeof ASSETS)[number];
 
-const ASSET_IDS: Record<AssetOption, string> = {
-  AE: "aeternity",
-};
-
 type CreateFormState = {
   barrierUp: string;
   barrierDown: string;
@@ -181,37 +177,33 @@ const App = () => {
     [],
   );
 
-  const fetchAssetData = useCallback(
-    async (asset: AssetOption): Promise<AssetSeries> => {
-      const existing = assetData[asset];
-      if (existing) return existing;
+  const fetchAssetData = useCallback(async (asset: AssetOption): Promise<AssetSeries> => {
+    setPriceLoading(true);
+    setPriceError(undefined);
 
-      const id = ASSET_IDS[asset];
-      const basePrice = asset === "AE" ? DEFAULT_SPOT_PRICE : DEFAULT_SPOT_PRICE;
-      const now = Date.now();
-      const series: PricePoint[] = Array.from({ length: STATIC_SERIES_POINTS }, (_, index) => {
-        const variance = Math.sin((index / STATIC_SERIES_POINTS) * Math.PI) * 0.04 * basePrice;
-        const value = Number((basePrice + variance).toFixed(4));
-        const time = new Date(now - (STATIC_SERIES_POINTS - index) * 3_600_000).toLocaleTimeString(
-          [],
-          { hour: "2-digit", minute: "2-digit" },
-        );
-        return { time, value };
-      });
+    const basePrice = asset === "AE" ? DEFAULT_SPOT_PRICE : DEFAULT_SPOT_PRICE;
+    const now = Date.now();
+    const series: PricePoint[] = Array.from({ length: STATIC_SERIES_POINTS }, (_, index) => {
+      const variance = Math.sin((index / STATIC_SERIES_POINTS) * Math.PI) * 0.04 * basePrice;
+      const value = Number((basePrice + variance).toFixed(4));
+      const time = new Date(now - (STATIC_SERIES_POINTS - index) * 3_600_000).toLocaleTimeString(
+        [],
+        { hour: "2-digit", minute: "2-digit" },
+      );
+      return { time, value };
+    });
 
-      const data: AssetSeries = {
-        price: basePrice,
-        series,
-        fetchedAt: now,
-      };
+    const data: AssetSeries = {
+      price: basePrice,
+      series,
+      fetchedAt: now,
+    };
 
-      setAssetData((prev) => ({ ...prev, [asset]: data }));
-      setPriceError(undefined);
-      setPriceLoading(false);
-      return data;
-    },
-    [assetData],
-  );
+    setAssetData((prev) => ({ ...prev, [asset]: data }));
+    setPriceError("Oracle responder not connected. Displaying sample AE price path.");
+    setPriceLoading(false);
+    return data;
+  }, []);
 
   const selectedMarket = useMemo(
     () => markets.find((m) => m.id === selectedMarketId) ?? null,
@@ -249,6 +241,8 @@ const App = () => {
   const selectedSeries = selectedAssetData?.series ?? [];
   const selectedSpot = selectedAssetData?.price ?? null;
   const uniqueAssetCount = new Set(markets.map((market) => market.asset)).size;
+  const contractReady = Boolean(contractInstance);
+  const contractAddressLabel = `${contracts.barrierAddress.slice(0, 6)}…${contracts.barrierAddress.slice(-4)}`;
 
   const isOwner = useMemo(
     () =>
@@ -296,6 +290,9 @@ const App = () => {
           sourceCode: barrierOptionsSource,
           address: contracts.barrierAddress as Encoded.ContractAddress,
         })) as any;
+        if (!instance.methods) {
+          instance.methods = instance;
+        }
         setContractInstance(instance);
         try {
           const rakeResult = await instance.methods.getRake();
@@ -408,7 +405,7 @@ const App = () => {
       return false;
     }
     if (!contractInstance) {
-      setErrorMessage("Contract not ready yet. Please wait.");
+      setErrorMessage("Barrier contract not ready. Reconnect wallet or refresh.");
       return false;
     }
     return true;
@@ -730,6 +727,12 @@ const App = () => {
               <p>Network: {networkId ?? "—"}</p>
             </>
           )}
+          <p>
+            Contract: {contractReady ? contractAddressLabel : "Loading…"}
+          </p>
+          <p>
+            Markets cached: {markets.length}
+          </p>
           <div className="wallet-actions">
             {!isWalletConnected ? (
               <button
@@ -895,7 +898,7 @@ const App = () => {
                       <button
                         type="button"
                         className="refresh-price"
-                        onClick={() => void fetchAssetData(createForm.asset, true)}
+                    onClick={() => void fetchAssetData(createForm.asset)}
                       >
                         Refresh
                       </button>
@@ -973,10 +976,10 @@ const App = () => {
                 <p className="hint">
                   Rake: {rakePercentLabel}% goes to the house on each settlement.
                 </p>
-                <button
-                  onClick={handleCreateMarket}
-                  disabled={pendingAction === "create-market" || !isOwner}
-                >
+            <button
+              onClick={handleCreateMarket}
+              disabled={pendingAction === "create-market" || !isOwner || !contractReady}
+            >
                   {pendingAction === "create-market"
                     ? "Creating…"
                     : "Create Market"}
@@ -1064,7 +1067,7 @@ const App = () => {
                       <button
                         type="button"
                         className="refresh-price"
-                        onClick={() => void fetchAssetData(selectedMarket.asset, true)}
+                        onClick={() => void fetchAssetData(selectedMarket.asset)}
                       >
                         Refresh
                       </button>
@@ -1191,7 +1194,7 @@ const App = () => {
                   <button
                     type="button"
                     onClick={handlePlaceBet}
-                    disabled={pendingAction === "place-bet" || !betForm.amount}
+                    disabled={pendingAction === "place-bet" || !betForm.amount || !contractReady}
                   >
                     {pendingAction === "place-bet" ? "Submitting…" : "Trade"}
                   </button>
@@ -1210,7 +1213,7 @@ const App = () => {
                   <button
                     type="button"
                     onClick={handleClaimPayout}
-                    disabled={pendingAction === "claim"}
+                    disabled={pendingAction === "claim" || !contractReady}
                   >
                     {pendingAction === "claim" ? "Submitting…" : "Claim"}
                   </button>
@@ -1225,7 +1228,7 @@ const App = () => {
                     <button
                       type="button"
                       onClick={handleRequestOracle}
-                      disabled={pendingAction === "request-oracle"}
+                      disabled={pendingAction === "request-oracle" || !contractReady}
                     >
                       {pendingAction === "request-oracle" ? "Requesting…" : "Trigger Oracle"}
                     </button>

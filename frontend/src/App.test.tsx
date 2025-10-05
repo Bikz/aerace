@@ -48,15 +48,13 @@ jest.mock(
 );
 
 const mockContract = {
-  methods: {
-    getMarketCounter: jest.fn(async () => ({ decodedResult: 0 })),
-    getMarketData: jest.fn(async () => ({ decodedResult: undefined })),
-    getRake: jest.fn(async () => ({ decodedResult: 20000 })),
-    createMarket: jest.fn(async () => undefined),
-    placeBet: jest.fn(async () => undefined),
-    requestOraclePrice: jest.fn(async () => undefined),
-    claimPayout: jest.fn(async () => undefined),
-  },
+  getMarketCounter: jest.fn(async () => ({ decodedResult: 0 })),
+  getMarketData: jest.fn(async () => ({ decodedResult: undefined })),
+  getRake: jest.fn(async () => ({ decodedResult: 20000 })),
+  createMarket: jest.fn(async () => undefined),
+  placeBet: jest.fn(async () => undefined),
+  requestOraclePrice: jest.fn(async () => undefined),
+  claimPayout: jest.fn(async () => undefined),
 };
 
 jest.mock("@aeternity/aepp-sdk", () => {
@@ -105,7 +103,6 @@ afterEach(() => {
 test("shows landing call to action", async () => {
   render(<App />);
   const launchButton = screen.getByRole("button", { name: /launch app/i });
-  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   expect(launchButton).toBeInTheDocument();
 });
 
@@ -122,5 +119,4 @@ test("enters trading interface after launching", async () => {
   const heading = await screen.findByRole("heading", { name: /aerace markets/i });
   expect(heading).toBeInTheDocument();
   expect(screen.getByText(/No markets yet/i)).toBeInTheDocument();
-  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 });

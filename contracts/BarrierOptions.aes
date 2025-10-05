@@ -73,7 +73,7 @@ contract BarrierOptions =
   stateful entrypoint setRake(rakePpm : int) =
     require(Call.caller == state.owner, "ERR_NOT_OWNER")
     require(rakePpm >= 0, "ERR_INVALID_RAKE")
-    require(rakePpm <= 100000, "ERR_RAKE_TOO_HIGH")
+    require(rakePpm =< 100000, "ERR_RAKE_TOO_HIGH")
     put(state{ rake_ppm = rakePpm })
 
   stateful entrypoint withdrawRake(amount : int) =

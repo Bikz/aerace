@@ -15,6 +15,7 @@ contract BarrierOptions =
 
   record market =
     { id           : int
+    , asset        : string
     , barrier_up   : int
     , barrier_down : int
     , expiry       : int
@@ -32,7 +33,8 @@ contract BarrierOptions =
     , oracle_fee          : int
     , oracle_query_ttl    : int
     , oracle_response_ttl : int
-    , oracle_queries      : map(int, price_query) }
+    , oracle_queries      : map(int, price_query)
+    , rake_ppm            : int }
 
   datatype event =
     MarketCreatedEvent(int, int, int)
@@ -53,7 +55,8 @@ contract BarrierOptions =
       oracle_fee = 0,
       oracle_query_ttl = 0,
       oracle_response_ttl = 0,
-      oracle_queries = {} }
+      oracle_queries = {},
+      rake_ppm = 20000 }
 
   stateful entrypoint configureOracle(oracleAddr : price_oracle, queryFee : int, queryTtl : int, responseTtl : int) =
     require(Call.caller == state.owner, "ERR_NOT_OWNER")
@@ -66,6 +69,18 @@ contract BarrierOptions =
                oracle_response_ttl = responseTtl,
                oracle_queries = {} })
     Chain.event(OracleConfiguredEvent(queryFee, queryTtl, responseTtl))
+
+  stateful entrypoint setRake(rakePpm : int) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    require(rakePpm >= 0, "ERR_INVALID_RAKE")
+    require(rakePpm =< 100000, "ERR_RAKE_TOO_HIGH")
+    put(state{ rake_ppm = rakePpm })
+
+  stateful entrypoint withdrawRake(amount : int) =
+    require(Call.caller == state.owner, "ERR_NOT_OWNER")
+    require(amount > 0, "ERR_INVALID_WITHDRAWAL")
+    require(Chain.balance(Contract.address) >= amount, "ERR_INSUFFICIENT_CONTRACT_BALANCE")
+    Chain.spend(Call.caller, amount)
 
   payable stateful entrypoint requestOraclePrice(id : int, payload : string) =
     require(Call.caller == state.owner, "ERR_NOT_OWNER")
@@ -99,7 +114,7 @@ contract BarrierOptions =
         settleMarketWithPrice(id, price, true)
         Chain.event(OraclePriceConsumedEvent(id, price))
 
-  stateful entrypoint createMarket(barrierUp : int, barrierDown : int, duration : int, raceMode : bool) =
+  stateful entrypoint createMarket(asset : string, barrierUp : int, barrierDown : int, duration : int, raceMode : bool) =
     require(Call.caller == state.owner, "ERR_NOT_OWNER")
     require(barrierUp > 0, "ERR_INVALID_BARRIER_UP")
     require(duration > 0, "ERR_INVALID_DURATION")
@@ -110,6 +125,7 @@ contract BarrierOptions =
     let new_id = state.market_counter + 1
     let expiry = Chain.block_height + duration
     let new_market : market = { id = new_id,
+                               asset = asset,
                                barrier_up = barrierUp,
                                barrier_down = barrierDown,
                                expiry = expiry,
@@ -192,8 +208,7 @@ contract BarrierOptions =
     put(state{ oracle_queries = updatedQueries })
 
   function applyFee(amount : int) : int =
-    let feePpm = 0
-    amount - (amount * feePpm) / 1000000
+    amount - (amount * state.rake_ppm) / 1000000
 
   stateful function evaluateMarket(market : market, price : int) : market =
     switch(market.status)
@@ -231,6 +246,8 @@ contract BarrierOptions =
     Map.lookup(id, state.oracle_queries)
 
   entrypoint getMarketCounter() : int = state.market_counter
+
+  entrypoint getRake() : int = state.rake_ppm
 
   entrypoint getMarketData(id : int) : market =
     getMarket(id)
