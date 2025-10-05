@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  AE_AMOUNT_FORMATS,
-  Encoded,
-  Tag,
-} from "@aeternity/aepp-sdk";
+import { AE_AMOUNT_FORMATS } from "@aeternity/aepp-sdk";
+import type { Encoded } from '@aeternity/aepp-sdk';
 
 import "./App.css";
 import useAeternitySDK from "./hooks/useAeternitySDK";
@@ -156,7 +153,7 @@ const App = () => {
       try {
         const instance = await aeSdk.initializeContract({
           sourceCode: barrierOptionsSource,
-          address: contracts.barrierAddress,
+          address: contracts.barrierAddress as Encoded.ContractAddress,
         });
         setContractInstance(instance);
       } catch (error) {
