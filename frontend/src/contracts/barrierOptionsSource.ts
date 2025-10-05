@@ -1,4 +1,4 @@
-@compiler >= 6
+export const barrierOptionsSource = String.raw`@compiler >= 6
 
 contract BarrierOptions =
 
@@ -244,3 +244,4 @@ contract BarrierOptions =
     switch(Map.lookup(Call.caller, market.bets))
       None => abort("ERR_NO_BET")
       Some(b) => b
+`;

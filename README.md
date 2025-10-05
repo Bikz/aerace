@@ -121,5 +121,23 @@ Keep the responder running continuously while your front end is live.
 - ExchangeOracle (testnet): `ct_tmkuVj9TbRZiGwEJChGBCzFNBz44biwWeMAMKeqbTw54PMwvz`
 - Oracle ID: `ok_tmkuVj9TbRZiGwEJChGBCzFNBz44biwWeMAMKeqbTw54PMwvz`
 
+## Frontend (React)
+- Located in `frontend/` (bootstrapped from `aepp-boilerplate-react`).
+- Install and run:
+
+  ```bash
+  cd frontend
+  npm install
+  npm start
+  ```
+
+- Configure via `.env` (prefix vars with `REACT_APP_`):
+  - `REACT_APP_BARRIER_CONTRACT_ADDRESS`
+  - `REACT_APP_PRICE_ORACLE_ID`
+  - `REACT_APP_OWNER_ADDRESS`
+  - `REACT_APP_ORACLE_QUERY_FEE`
+
+- Features: wallet connect, market list/detail, betting form, owner controls, oracle trigger, payout claim UI. Uses `AeSdkAepp` to compile the contract source at runtime.
+
 ## License
 MIT
