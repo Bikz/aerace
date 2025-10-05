@@ -53,12 +53,12 @@ type MarketView = {
 const AE_DECIMALS = 1_000_000_000_000_000_000n;
 const ASSETS = ["AE"] as const;
 const DURATION_OPTIONS = [
-  { label: "1 minute", blocks: 20 },
-  { label: "30 minutes", blocks: 600 },
-  { label: "1 hour", blocks: 1200 },
-  { label: "6 hours", blocks: 7200 },
-  { label: "24 hours", blocks: 28800 },
-  { label: "3 days", blocks: 86400 },
+  { label: "1 minute", blocks: 20, suggestedPercent: 0.005 },
+  { label: "30 minutes", blocks: 600, suggestedPercent: 0.01 },
+  { label: "1 hour", blocks: 1200, suggestedPercent: 0.015 },
+  { label: "6 hours", blocks: 7200, suggestedPercent: 0.02 },
+  { label: "24 hours", blocks: 28800, suggestedPercent: 0.03 },
+  { label: "3 days", blocks: 86400, suggestedPercent: 0.05 },
 ];
 const DEFAULT_RAKE_PPM = 20000;
 const RAKE_SCALE = 1_000_000;
@@ -169,11 +169,15 @@ const App = () => {
   const [rakePpm, setRakePpm] = useState<number>(DEFAULT_RAKE_PPM);
   const [chainHeight, setChainHeight] = useState<number | null>(null);
   const computeSuggestedBarriers = useCallback(
-    (price: number, isRace: boolean) => {
-      const upMultiplier = isRace ? 1.03 : 1.05;
-      const downMultiplier = isRace ? 0.97 : 0.95;
-      const up = Math.max(1, Math.round(price * upMultiplier));
-      const down = Math.max(1, Math.round(price * downMultiplier));
+    (price: number, isRace: boolean, durationBlocks: number) => {
+      const durationConfig = DURATION_OPTIONS.find((option) => option.blocks === durationBlocks);
+      const percent = durationConfig?.suggestedPercent ?? 0.05;
+      if (!price || Number.isNaN(price)) {
+        return { up: 1, down: 1 };
+      }
+      const up = Number((price * (1 + percent)).toFixed(4));
+      const downBase = Number((price * (1 - percent)).toFixed(4));
+      const down = isRace ? Math.max(downBase, 0.0005) : Math.max(downBase, 0.0005);
       return { up, down };
     },
     [],
@@ -229,6 +233,9 @@ const App = () => {
       : null;
   const durationBlocks = Number(createForm.duration || DURATION_OPTIONS[0].blocks);
   const durationMinutes = Math.max(Math.round((durationBlocks * 3) / 60), 1);
+  const durationConfig = DURATION_OPTIONS.find((option) => option.blocks === durationBlocks);
+  const durationPercent = durationConfig?.suggestedPercent ?? 0.05;
+  const durationPercentLabel = (durationPercent * 100).toFixed(1);
   const rakeRate = rakePpm / RAKE_SCALE;
   const rakePercentLabel = (rakePpm / 10000).toFixed(2);
   const poolTotal = selectedMarket
@@ -392,7 +399,7 @@ const App = () => {
     if (!autoBarriers) return;
     const data = assetData[createForm.asset];
     if (!data) return;
-    const suggestions = computeSuggestedBarriers(data.price, createForm.isRace);
+    const suggestions = computeSuggestedBarriers(data.price, createForm.isRace, durationBlocks);
     setCreateForm((prev) => {
       const nextDuration = prev.duration === "" ? DURATION_OPTIONS[2].blocks.toString() : prev.duration;
       if (
@@ -409,7 +416,7 @@ const App = () => {
         duration: nextDuration,
       };
     });
-  }, [autoBarriers, assetData, createForm.asset, createForm.isRace, computeSuggestedBarriers]);
+  }, [autoBarriers, assetData, createForm.asset, createForm.isRace, durationBlocks, computeSuggestedBarriers]);
 
   useEffect(() => {
     if (!markets.length) return;
@@ -445,7 +452,11 @@ const App = () => {
   const handleUseSuggestedBarriers = () => {
     const data = assetData[createForm.asset];
     if (!data) return;
-    const suggestions = computeSuggestedBarriers(data.price, createForm.isRace);
+    const suggestions = computeSuggestedBarriers(
+      data.price,
+      createForm.isRace,
+      durationBlocks,
+    );
     setAutoBarriers(true);
     setCreateForm((prev) => ({
       ...prev,
@@ -522,7 +533,11 @@ const App = () => {
         if (!data) {
           throw new Error("Price feed unavailable for selected asset.");
         }
-        const suggestions = computeSuggestedBarriers(data.price, createForm.isRace);
+        const suggestions = computeSuggestedBarriers(
+          data.price,
+          createForm.isRace,
+          duration,
+        );
         barrierUp = suggestions.up;
         barrierDown = suggestions.down;
       }
@@ -969,8 +984,8 @@ const App = () => {
                     {priceError && <p className="hint error-text">{priceError}</p>}
                     {createSpot != null && (
                       <p className="hint">
-                        Current spot ≈ ${createSpot.toFixed(2)}. Suggested barriers default to roughly
-                        ±5% to showcase one-touch behaviour.
+                        Current spot ≈ ${createSpot.toFixed(3)}. Suggested barriers follow the selected
+                        duration (±{durationPercentLabel}%).
                       </p>
                     )}
                   </div>
@@ -983,7 +998,8 @@ const App = () => {
                     Auto barriers
                   </label>
                   <p className="hint">
-                    Turn this off to set custom levels; resetting will reapply the suggested ±5% band.
+                    Turn this off to set custom levels; resetting will reapply the suggested ±
+                    {durationPercentLabel}% band.
                   </p>
                 </div>
                 <div className="field-group">
@@ -991,14 +1007,15 @@ const App = () => {
                   <input
                     id="barrier-up"
                     type="number"
+                    step="0.0001"
                     value={createForm.barrierUp}
                     disabled={autoBarriers}
                     onChange={handleBarrierChange("barrierUp")}
                   />
                   <p className="hint">
-                    Touch Up triggers at {parsedBarrierUp ?? "—"}
+                    Touch Up triggers at {parsedBarrierUp != null ? parsedBarrierUp.toFixed(3) : "—"}
                     {barrierUpDiff != null && !Number.isNaN(barrierUpDiff)
-                      ? ` (${barrierUpDiff >= 0 ? "+" : ""}${barrierUpDiff.toFixed(1)}%)`
+                      ? ` (${barrierUpDiff >= 0 ? "+" : ""}${barrierUpDiff.toFixed(2)}%)`
                       : ""}
                     .
                   </p>
@@ -1008,18 +1025,21 @@ const App = () => {
                   <input
                     id="barrier-down"
                     type="number"
+                    step="0.0001"
                     value={createForm.barrierDown}
                     disabled={autoBarriers}
                     onChange={handleBarrierChange("barrierDown")}
                   />
                   <p className="hint">
                     {createForm.isRace
-                      ? `Touch Down wins once price reaches ≤ ${parsedBarrierDown ?? "—"}${
+                      ? `Touch Down wins once price reaches ≤ ${
+                          parsedBarrierDown != null ? parsedBarrierDown.toFixed(3) : "—"
+                        }${
                           barrierDownDiff != null && !Number.isNaN(barrierDownDiff)
-                            ? ` (${barrierDownDiff >= 0 ? "+" : ""}${barrierDownDiff.toFixed(1)}%)`
+                            ? ` (${barrierDownDiff >= 0 ? "+" : ""}${barrierDownDiff.toFixed(2)}%)`
                             : ""
                         }.`
-                      : `Touch Down wins if price never crosses the upper barrier before expiry.`}
+                      : `Touch Down wins if price never crosses the upper barrier before expiry (≈ -${durationPercentLabel}% band).`}
                   </p>
                 </div>
                 <button
@@ -1027,7 +1047,7 @@ const App = () => {
                   className="link-button use-suggested"
                   onClick={handleUseSuggestedBarriers}
                 >
-                  Use suggested range
+                  Use suggested range (±{durationPercentLabel}%)
                 </button>
                 <div className="field-group">
                   <label htmlFor="duration">Duration</label>
@@ -1049,7 +1069,8 @@ const App = () => {
                   </select>
                   <p className="hint">
                     {durationBlocks} blocks ≈ {durationMinutes} minute
-                    {durationMinutes === 1 ? "" : "s"} (assuming ~3s blocks).
+                    {durationMinutes === 1 ? "" : "s"} (assuming ~3s blocks). Suggested band ±
+                    {durationPercentLabel}%.
                   </p>
                 </div>
                 <label className="checkbox">
