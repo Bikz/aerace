@@ -53,6 +53,7 @@ type MarketView = {
 const AE_DECIMALS = 1_000_000_000_000_000_000n;
 const ASSETS = ["AE"] as const;
 const DURATION_OPTIONS = [
+  { label: "1 minute", blocks: 20 },
   { label: "30 minutes", blocks: 600 },
   { label: "1 hour", blocks: 1200 },
   { label: "6 hours", blocks: 7200 },
@@ -166,6 +167,7 @@ const App = () => {
   const [priceError, setPriceError] = useState<string | undefined>();
   const [autoBarriers, setAutoBarriers] = useState(true);
   const [rakePpm, setRakePpm] = useState<number>(DEFAULT_RAKE_PPM);
+  const [chainHeight, setChainHeight] = useState<number | null>(null);
   const computeSuggestedBarriers = useCallback(
     (price: number, isRace: boolean) => {
       const upMultiplier = isRace ? 1.03 : 1.05;
@@ -243,6 +245,12 @@ const App = () => {
   const uniqueAssetCount = new Set(markets.map((market) => market.asset)).size;
   const contractReady = Boolean(contractInstance);
   const contractAddressLabel = `${contracts.barrierAddress.slice(0, 6)}…${contracts.barrierAddress.slice(-4)}`;
+  const blocksRemaining =
+    selectedMarket && chainHeight != null
+      ? Math.max(selectedMarket.expiry - chainHeight, 0)
+      : null;
+  const approxMinutes =
+    blocksRemaining != null ? Math.max(Math.round((blocksRemaining * 3) / 1), 0) : null;
 
   const isOwner = useMemo(
     () =>
@@ -312,11 +320,11 @@ const App = () => {
     if (!contractInstance) return [];
     setMarketsLoading(true);
     try {
-      const counterResult = await contractInstance.methods.getMarketCounter();
+      const counterResult = await contractInstance.getMarketCounter();
       const count = Number(counterResult.decodedResult ?? 0);
       const items: MarketView[] = [];
       for (let id = 1; id <= count; id += 1) {
-        const result = await contractInstance.methods.getMarketData(id);
+        const result = await contractInstance.getMarketData(id);
         const raw = result.decodedResult as RawMarket;
         const totalUp = BigInt(raw.total_up.toString());
         const totalDown = BigInt(raw.total_down.toString());
@@ -333,6 +341,12 @@ const App = () => {
         });
       }
       setMarkets(items);
+      try {
+        const heightInfo = await aeSdk.api.getCurrentKeyBlockHeight();
+        setChainHeight(heightInfo.height ?? null);
+      } catch (heightError) {
+        console.warn("Failed to fetch chain height", heightError);
+      }
       if (!items.length) {
         setSelectedMarketId(null);
       } else if (!items.some((m) => m.id === selectedMarketId)) {
@@ -510,7 +524,7 @@ const App = () => {
       }
 
       setPendingAction("create-market");
-      await contractInstance.methods.createMarket(
+      await contractInstance.createMarket(
         createForm.asset,
         barrierUp,
         barrierDown,
@@ -541,14 +555,26 @@ const App = () => {
     try {
       const amount = toAettos(betForm.amount);
       setPendingAction("place-bet");
-      await contractInstance.methods.placeBet(selectedMarket.id, betForm.onUp, {
+      await contractInstance.placeBet(selectedMarket.id, betForm.onUp, {
         amount,
       });
       setBetForm((prev) => ({ ...prev, amount: "" }));
       setSuccessMessage("Bet placed successfully.");
       await loadMarkets();
     } catch (error) {
-      if (error instanceof Error) setErrorMessage(error.message);
+      if (error instanceof Error) {
+        if (error.message.includes("ERR_SWITCH_SIDE")) {
+          setErrorMessage(
+            "You already have a position on the opposite side. Close it or use the same direction.",
+          );
+        } else if (error.message.includes("tx_nonce")) {
+          setErrorMessage(
+            "Nonce mismatch. Refresh the app or reconnect your wallet, then try again.",
+          );
+        } else {
+          setErrorMessage(error.message);
+        }
+      }
     } finally {
       setPendingAction(null);
     }
@@ -562,7 +588,7 @@ const App = () => {
       const asset = selectedMarket.asset ?? "AE";
       const payload = `${asset}/USD`;
       setPendingAction("request-oracle");
-      await contractInstance.methods.requestOraclePrice(
+      await contractInstance.requestOraclePrice(
         selectedMarket.id,
         payload,
         {
@@ -583,7 +609,7 @@ const App = () => {
     if (!guardConnection() || !selectedMarket) return;
     try {
       setPendingAction("claim");
-      await contractInstance.methods.claimPayout(selectedMarket.id);
+      await contractInstance.claimPayout(selectedMarket.id);
       setSuccessMessage("Claim transaction sent.");
       await loadMarkets();
     } catch (error) {
@@ -787,6 +813,10 @@ const App = () => {
                 const changeLabel = hasSeries
                   ? `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`
                   : "—";
+                const blocksToExpiry =
+                  chainHeight != null ? Math.max(market.expiry - chainHeight, 0) : null;
+                const approxMinutesCard =
+                  blocksToExpiry != null ? Math.max(Math.round(blocksToExpiry * 3), 0) : null;
                 return (
                   <li key={market.id}>
                     <button
@@ -806,6 +836,14 @@ const App = () => {
                       <h3>#{market.id} · {market.asset} touch</h3>
                       <p className="expiry">
                         Touch {market.barrierDown} ↔ {market.barrierUp} · block {market.expiry}
+                        {blocksToExpiry != null && (
+                          <>
+                            <br />
+                            <span className="expiry-hint">
+                              {blocksToExpiry} blocks · ≈ {approxMinutesCard} min
+                            </span>
+                          </>
+                        )}
                       </p>
                       <div className="discover-price-line">
                         <span className="spot">
@@ -1044,12 +1082,19 @@ const App = () => {
                         : "—"}
                     </strong>
                   </div>
-                  <div>
-                    <span className="label">Pool</span>
-                    <strong>{poolAe.toFixed(3)} AE</strong>
-                  </div>
+                <div>
+                  <span className="label">Pool</span>
+                  <strong>{poolAe.toFixed(3)} AE</strong>
+                </div>
+                <div>
+                  <span className="label">Blocks remaining</span>
+                  <strong>
+                    {blocksRemaining != null ? `${blocksRemaining}` : "—"}
+                    {approxMinutes != null ? ` · ≈ ${approxMinutes} min` : ""}
+                  </strong>
                 </div>
               </div>
+            </div>
 
               <section className="market-content">
                 <div className="chart-column">
