@@ -2,38 +2,35 @@
 
 contract BarrierOptions =
 
-    type query_type = string
-    type answer_type = int
-    type price_oracle = oracle(query_type, answer_type)
-    type price_query = oracle_query(query_type, answer_type)
+  type query_type = string
+  type answer_type = int
+  type price_oracle = oracle(query_type, answer_type)
+  type price_query = oracle_query(query_type, answer_type)
 
-    record bet = {
-        on_up : bool,
-        amount : int
-    }
+  record bet =
+    { on_up  : bool
+    , amount : int }
 
-    record market = {
-        id : int,
-        barrier_up : int,
-        barrier_down : option(int),
-        expiry : int,
-        is_race : bool,
-        status : string,
-        total_up : int,
-        total_down : int,
-        bets : map(address, bet)
-    }
+  record market =
+    { id           : int
+    , barrier_up   : int
+    , barrier_down : option(int)
+    , expiry       : int
+    , is_race      : bool
+    , status       : string
+    , total_up     : int
+    , total_down   : int
+    , bets         : map(address, bet) }
 
-    record state = {
-        owner : address,
-        market_counter : int,
-        markets : map(int, market),
-        oracle : option(price_oracle),
-        oracle_fee : int,
-        oracle_query_ttl : int,
-        oracle_response_ttl : int,
-        oracle_queries : map(int, price_query)
-    }
+  record state =
+    { owner               : address
+    , market_counter      : int
+    , markets             : map(int, market)
+    , oracle              : option(price_oracle)
+    , oracle_fee          : int
+    , oracle_query_ttl    : int
+    , oracle_response_ttl : int
+    , oracle_queries      : map(int, price_query) }
 
     event MarketCreated(id : int, barrier_up : int, barrier_down : option(int), expiry : int, is_race : bool)
     event BetPlaced(id : int, bettor : address, on_up : bool, amount : int)

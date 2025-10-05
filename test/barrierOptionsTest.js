@@ -50,19 +50,6 @@ describe("BarrierOptions", () => {
       onAccount: owner,
     });
 
-    // Deploy ExchangeOracle (used in oracle tests)
-    const oracleFs = await getFileSystem(ORACLE_SOURCE);
-    const oracleSource = utils.getContractContent(ORACLE_SOURCE);
-    oracleContract = await Contract.initialize({
-      ...aeSdk.getContext(),
-      sourceCode: oracleSource,
-      fileSystem: oracleFs,
-    });
-
-    await oracleContract.init(ORACLE_FEE, QUERY_TTL, {
-      onAccount: owner,
-    });
-
     await utils.createSnapshot(aeSdk);
   });
 
