@@ -172,12 +172,11 @@ const App = () => {
     (price: number, isRace: boolean, durationBlocks: number) => {
       const durationConfig = DURATION_OPTIONS.find((option) => option.blocks === durationBlocks);
       const percent = durationConfig?.suggestedPercent ?? 0.05;
-      if (!price || Number.isNaN(price)) {
-        return { up: 1, down: 1 };
-      }
-      const up = Number((price * (1 + percent)).toFixed(4));
-      const downBase = Number((price * (1 - percent)).toFixed(4));
-      const down = isRace ? Math.max(downBase, 0.0005) : Math.max(downBase, 0.0005);
+      const basePrice = !price || Number.isNaN(price) ? DEFAULT_SPOT_PRICE : price;
+      const scaledBase = Math.max(Math.round(basePrice * 100), 1); // cents style scaling
+      const up = Math.max(Math.round(scaledBase * (1 + percent)), scaledBase + 1);
+      const downBase = Math.max(Math.round(scaledBase * (1 - percent)), 1);
+      const down = isRace ? Math.max(downBase, 1) : scaledBase;
       return { up, down };
     },
     [],
@@ -223,13 +222,21 @@ const App = () => {
   const createSpot = createAssetData?.price ?? null;
   const parsedBarrierUp = createForm.barrierUp === "" ? null : Number(createForm.barrierUp);
   const parsedBarrierDown = createForm.barrierDown === "" ? null : Number(createForm.barrierDown);
+  const barrierUpDisplay =
+    parsedBarrierUp != null && !Number.isNaN(parsedBarrierUp)
+      ? (parsedBarrierUp / 100).toFixed(2)
+      : null;
+  const barrierDownDisplay =
+    parsedBarrierDown != null && !Number.isNaN(parsedBarrierDown)
+      ? (parsedBarrierDown / 100).toFixed(2)
+      : null;
   const barrierUpDiff =
     createSpot != null && parsedBarrierUp != null && !Number.isNaN(parsedBarrierUp)
-      ? ((parsedBarrierUp - createSpot) / createSpot) * 100
+      ? ((parsedBarrierUp / 100 - createSpot) / createSpot) * 100
       : null;
   const barrierDownDiff =
     createSpot != null && parsedBarrierDown != null && !Number.isNaN(parsedBarrierDown)
-      ? ((parsedBarrierDown - createSpot) / createSpot) * 100
+      ? ((parsedBarrierDown / 100 - createSpot) / createSpot) * 100
       : null;
   const durationBlocks = Number(createForm.duration || DURATION_OPTIONS[0].blocks);
   const durationMinutes = Math.max(Math.round((durationBlocks * 3) / 60), 1);
@@ -320,7 +327,7 @@ const App = () => {
         })) as any;
         setContractInstance(instance);
         try {
-          const rakeResult = await instance.methods.getRake();
+          const rakeResult = await instance.getRake();
           const value = Number(rakeResult.decodedResult ?? DEFAULT_RAKE_PPM);
           if (!Number.isNaN(value)) {
             setRakePpm(value);
@@ -520,8 +527,8 @@ const App = () => {
     setSuccessMessage(undefined);
     if (!guardConnection()) return;
     try {
-      let barrierUp = Number(createForm.barrierUp);
-      let barrierDown = Number(createForm.barrierDown);
+      let barrierUp = Math.round(Number(createForm.barrierUp));
+      let barrierDown = Math.round(Number(createForm.barrierDown));
       const duration = Number(createForm.duration);
 
       if (autoBarriers) {
@@ -1007,7 +1014,7 @@ const App = () => {
                     onChange={handleBarrierChange("barrierUp")}
                   />
                   <p className="hint">
-                    Touch Up triggers at {parsedBarrierUp != null ? parsedBarrierUp.toFixed(3) : "—"}
+                    Touch Up triggers at {barrierUpDisplay ?? "—"} USD
                     {barrierUpDiff != null && !Number.isNaN(barrierUpDiff)
                       ? ` (${barrierUpDiff >= 0 ? "+" : ""}${barrierUpDiff.toFixed(2)}%)`
                       : ""}
@@ -1026,9 +1033,7 @@ const App = () => {
                   />
                   <p className="hint">
                     {createForm.isRace
-                      ? `Touch Down wins once price reaches ≤ ${
-                          parsedBarrierDown != null ? parsedBarrierDown.toFixed(3) : "—"
-                        }${
+                      ? `Touch Down wins once price reaches ≤ ${barrierDownDisplay ?? "—"} USD${
                           barrierDownDiff != null && !Number.isNaN(barrierDownDiff)
                             ? ` (${barrierDownDiff >= 0 ? "+" : ""}${barrierDownDiff.toFixed(2)}%)`
                             : ""
