@@ -18,11 +18,11 @@ contract ExchangeOracle =
     event OracleResponded(query : query_id, value : int)
     event OracleExtended(ttl : int)
 
-    stateful entrypoint init(fee : int, ttl : int) : state =
+    entrypoint init(fee : int, ttl : int) =
         require(fee > 0, "ERR_FEE_ZERO")
         require(ttl > 0, "ERR_TTL_ZERO")
         let oracle = Oracle.register(Contract.address, fee, RelativeTTL(ttl))
-        Chain.event(OracleRegistered(fee, ttl))
+        emit(OracleRegistered(fee, ttl))
         {
             owner = Call.caller,
             oracle = oracle,
@@ -39,11 +39,11 @@ contract ExchangeOracle =
     stateful entrypoint respond(query : query_id, value : int) =
         require(Call.caller == state.owner, "ERR_NOT_OWNER")
         Oracle.respond(state.oracle, query, value)
-        Chain.event(OracleResponded(query, value))
+        emit(OracleResponded(query, value))
 
     stateful entrypoint extend(ttl : int) =
         require(Call.caller == state.owner, "ERR_NOT_OWNER")
         require(ttl > 0, "ERR_TTL_ZERO")
         Oracle.extend(state.oracle, RelativeTTL(ttl))
         put(state{ ttl = ttl })
-        Chain.event(OracleExtended(ttl))
+        emit(OracleExtended(ttl))

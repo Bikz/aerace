@@ -42,7 +42,7 @@ contract BarrierOptions =
     event MarketExpired(id : int)
     event PayoutClaimed(id : int, account : address, payout : int)
     event OracleConfigured(fee : int, query_ttl : int, response_ttl : int)
-    event OraclePriceRequested(id : int, payload : string)
+    event OraclePriceRequested(id : int, query : price_query, payload : string)
     event OraclePriceConsumed(id : int, price : int)
 
     entrypoint init() = {
@@ -93,7 +93,7 @@ contract BarrierOptions =
         let excess = Call.value - fee_to_pay
         if(excess > 0)
             Chain.spend(Call.caller, excess)
-        emit(OraclePriceRequested(id, payload))
+        emit(OraclePriceRequested(id, query, payload))
 
     stateful entrypoint checkMarketFromOracle(id : int) =
         require(Call.caller == state.owner, "ERR_NOT_OWNER")
@@ -236,6 +236,9 @@ contract BarrierOptions =
         switch(state.oracle)
             None => abort("ERR_ORACLE_NOT_CONFIGURED")
             Some(oracle) => oracle
+
+    entrypoint getOracleQuery(id : int) : option(price_query) =
+        Map.lookup(id, state.oracle_queries)
 
     function get_oracle_query(id : int) : price_query =
         switch(Map.lookup(id, state.oracle_queries))
