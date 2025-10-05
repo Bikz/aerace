@@ -51,15 +51,7 @@ type MarketView = {
 };
 
 const AE_DECIMALS = 1_000_000_000_000_000_000n;
-const ASSETS = ["AE", "BTC", "ETH", "SOL", "AVAX", "DOGE"] as const;
-const ASSET_CONFIG: Record<AssetOption, string> = {
-  AE: "aeternity",
-  BTC: "bitcoin",
-  ETH: "ethereum",
-  SOL: "solana",
-  AVAX: "avalanche-2",
-  DOGE: "dogecoin",
-};
+const ASSETS = ["AE"] as const;
 const DURATION_OPTIONS = [
   { label: "30 minutes", blocks: 600 },
   { label: "1 hour", blocks: 1200 },
@@ -69,7 +61,8 @@ const DURATION_OPTIONS = [
 ];
 const DEFAULT_RAKE_PPM = 20000;
 const RAKE_SCALE = 1_000_000;
-const COINGECKO_API_KEY = process.env.REACT_APP_COINGECKO_API_KEY;
+const DEFAULT_SPOT_PRICE = 0.22;
+const STATIC_SERIES_POINTS = 12;
 const QUICK_AMOUNTS = [1, 5, 10, 25];
 
 type PricePoint = {
@@ -103,6 +96,10 @@ const PriceTooltip = ({
 };
 
 type AssetOption = (typeof ASSETS)[number];
+
+const ASSET_IDS: Record<AssetOption, string> = {
+  AE: "aeternity",
+};
 
 type CreateFormState = {
   barrierUp: string;
@@ -185,63 +182,33 @@ const App = () => {
   );
 
   const fetchAssetData = useCallback(
-    async (asset: AssetOption, force = false): Promise<AssetSeries | null> => {
+    async (asset: AssetOption): Promise<AssetSeries> => {
       const existing = assetData[asset];
-      if (!force && existing && Date.now() - existing.fetchedAt < 60_000) {
-        return existing;
-      }
+      if (existing) return existing;
 
-      const id = ASSET_CONFIG[asset];
-      if (!id) return existing ?? null;
+      const id = ASSET_IDS[asset];
+      const basePrice = asset === "AE" ? DEFAULT_SPOT_PRICE : DEFAULT_SPOT_PRICE;
+      const now = Date.now();
+      const series: PricePoint[] = Array.from({ length: STATIC_SERIES_POINTS }, (_, index) => {
+        const variance = Math.sin((index / STATIC_SERIES_POINTS) * Math.PI) * 0.04 * basePrice;
+        const value = Number((basePrice + variance).toFixed(4));
+        const time = new Date(now - (STATIC_SERIES_POINTS - index) * 3_600_000).toLocaleTimeString(
+          [],
+          { hour: "2-digit", minute: "2-digit" },
+        );
+        return { time, value };
+      });
 
-      try {
-        setPriceLoading(true);
-        setPriceError(undefined);
-        const headers = COINGECKO_API_KEY
-          ? {
-              headers: {
-                "x-cg-pro-api-key": COINGECKO_API_KEY,
-              },
-            }
-          : undefined;
-        const [priceRes, chartRes] = await Promise.all([
-          fetch(
-            `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
-            headers,
-          ),
-          fetch(
-            `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
-            headers,
-          ),
-        ]);
+      const data: AssetSeries = {
+        price: basePrice,
+        series,
+        fetchedAt: now,
+      };
 
-        const priceJson = await priceRes.json();
-        const price = Number(priceJson?.[id]?.usd ?? 0);
-
-        const chartJson = await chartRes.json();
-        const series: PricePoint[] = Array.isArray(chartJson?.prices)
-          ? chartJson.prices.map(([ts, value]: [number, number]) => ({
-              time: new Date(ts).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              value: Number(value ?? 0),
-            }))
-          : [];
-
-        const data: AssetSeries = { price, series, fetchedAt: Date.now() };
-        setAssetData((prev) => ({ ...prev, [asset]: data }));
-        return data;
-      } catch (error) {
-        if (error instanceof Error) {
-          setPriceError(error.message);
-        } else {
-          setPriceError("Failed to fetch price data");
-        }
-        return existing ?? null;
-      } finally {
-        setPriceLoading(false);
-      }
+      setAssetData((prev) => ({ ...prev, [asset]: data }));
+      setPriceError(undefined);
+      setPriceLoading(false);
+      return data;
     },
     [assetData],
   );

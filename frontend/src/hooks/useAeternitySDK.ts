@@ -7,7 +7,7 @@ import {
   SUBSCRIPTION_TYPES,
   walletDetector,
 } from "@aeternity/aepp-sdk";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import network from "../configs/network";
 
@@ -17,6 +17,7 @@ import network from "../configs/network";
 const useAeternitySDK = () => {
   const [address, setAddress] = useState<Encoded.AccountAddress | undefined>();
   const [networkId, setNetworkId] = useState<string | undefined>();
+  const walletRef = useRef<any | null>(null);
 
   const aeSdk = useMemo(
     () =>
@@ -44,21 +45,28 @@ const useAeternitySDK = () => {
     // TODO: remove NonNullable after releasing https://github.com/aeternity/aepp-sdk-js/pull/1801
     type Wallet = NonNullable<Parameters<HandleWallets>[0]["newWallet"]>;
 
-    const wallet = await new Promise<Wallet>((resolve) => {
-      let stopScan: ReturnType<typeof walletDetector>;
-      const handleWallets: HandleWallets = async ({ wallets, newWallet }) => {
-        const nextWallet = newWallet || Object.values(wallets)[0];
-        stopScan();
-        resolve(nextWallet as Wallet);
-      };
-      const scannerConnection = new BrowserWindowMessageConnection();
-      stopScan = walletDetector(scannerConnection, handleWallets);
-    });
+    if (!walletRef.current) {
+      walletRef.current = await new Promise<Wallet>((resolve) => {
+        let stopScan: ReturnType<typeof walletDetector>;
+        const handleWallets: HandleWallets = async ({ wallets, newWallet }) => {
+          const nextWallet = newWallet || Object.values(wallets)[0];
+          stopScan();
+          resolve(nextWallet as Wallet);
+        };
+        const scannerConnection = new BrowserWindowMessageConnection();
+        stopScan = walletDetector(scannerConnection, handleWallets);
+      });
+    }
 
-    await aeSdk.connectToWallet(await wallet.getConnection());
-    await aeSdk.subscribeAddress(SUBSCRIPTION_TYPES.subscribe, "current");
-    // TODO: remove after releasing https://github.com/aeternity/aepp-sdk-js/issues/1802
-    aeSdk.onAddressChange({ current: { [aeSdk.address]: {} }, connected: {} });
+    try {
+      await aeSdk.connectToWallet(await walletRef.current.getConnection());
+      await aeSdk.subscribeAddress(SUBSCRIPTION_TYPES.subscribe, "current");
+      // TODO: remove after releasing https://github.com/aeternity/aepp-sdk-js/issues/1802
+      aeSdk.onAddressChange({ current: { [aeSdk.address]: {} }, connected: {} });
+    } catch (error) {
+      walletRef.current = null;
+      throw error;
+    }
   }, [aeSdk]);
 
   const disconnectWallet = useCallback(() => {
@@ -71,6 +79,7 @@ const useAeternitySDK = () => {
     }
     setAddress(undefined);
     setNetworkId(undefined);
+    walletRef.current = null;
   }, [aeSdk]);
 
   return { aeSdk, connectToWallet, disconnectWallet, address, networkId };
