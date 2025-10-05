@@ -737,6 +737,21 @@ a {
   line-height: 1.5;
 }
 
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-strong);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.link-button:hover {
+  color: var(--accent);
+}
+
 .market-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

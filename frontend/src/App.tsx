@@ -216,6 +216,19 @@ const App = () => {
     ? assetData[selectedMarket.asset]
     : undefined;
   const createAssetData = assetData[createForm.asset];
+  const createSpot = createAssetData?.price ?? null;
+  const parsedBarrierUp = createForm.barrierUp === "" ? null : Number(createForm.barrierUp);
+  const parsedBarrierDown = createForm.barrierDown === "" ? null : Number(createForm.barrierDown);
+  const barrierUpDiff =
+    createSpot != null && parsedBarrierUp != null && !Number.isNaN(parsedBarrierUp)
+      ? ((parsedBarrierUp - createSpot) / createSpot) * 100
+      : null;
+  const barrierDownDiff =
+    createSpot != null && parsedBarrierDown != null && !Number.isNaN(parsedBarrierDown)
+      ? ((parsedBarrierDown - createSpot) / createSpot) * 100
+      : null;
+  const durationBlocks = Number(createForm.duration || DURATION_OPTIONS[0].blocks);
+  const durationMinutes = Math.max(Math.round((durationBlocks * 3) / 60), 1);
   const rakeRate = rakePpm / RAKE_SCALE;
   const rakePercentLabel = (rakePpm / 10000).toFixed(2);
   const poolTotal = selectedMarket
@@ -494,7 +507,11 @@ const App = () => {
   const handleCreateMarket = async () => {
     setErrorMessage(undefined);
     setSuccessMessage(undefined);
-    if (!guardConnection() || !isOwner) return;
+    if (!guardConnection()) return;
+    if (!isOwner) {
+      setErrorMessage("Only the contract owner can create markets on-chain.");
+      return;
+    }
     try {
       let barrierUp = Number(createForm.barrierUp);
       let barrierDown = Number(createForm.barrierDown);
@@ -894,14 +911,25 @@ const App = () => {
             )}
           </ul>
 
-          {isOwner && (
-            <section className="create-market-section">
-              <h2>Launch a market</h2>
-              <div className="form create-form">
-                <div className="field-group">
-                  <label htmlFor="asset">Asset</label>
-                  <select
-                    id="asset"
+          <section className="create-market-section">
+            <h2>Launch a market</h2>
+            {!isOwner && (
+              <p className="hint warning-text">
+                Only the contract owner ({contracts.ownerAddress.slice(0, 6)}…
+                {contracts.ownerAddress.slice(-4)}) can submit this form. Connect with that
+                wallet to deploy live markets.
+              </p>
+            )}
+            <p className="hint">
+              Barriers are expressed in USD. Touch Up finishes as soon as AE/USD reaches the upper
+              barrier; Touch Down wins if that threshold is never crossed (or, in race mode, if price
+              touches the lower barrier first).
+            </p>
+            <div className="form create-form">
+              <div className="field-group">
+                <label htmlFor="asset">Asset</label>
+                <select
+                  id="asset"
                     value={createForm.asset}
                     onChange={(event) =>
                       setCreateForm((prev) => ({
@@ -933,12 +961,18 @@ const App = () => {
                       <button
                         type="button"
                         className="refresh-price"
-                    onClick={() => void fetchAssetData(createForm.asset)}
+                        onClick={() => void fetchAssetData(createForm.asset)}
                       >
                         Refresh
                       </button>
                     </div>
                     {priceError && <p className="hint error-text">{priceError}</p>}
+                    {createSpot != null && (
+                      <p className="hint">
+                        Current spot ≈ ${createSpot.toFixed(2)}. Suggested barriers default to roughly
+                        ±5% to showcase one-touch behaviour.
+                      </p>
+                    )}
                   </div>
                   <label className="auto-toggle">
                     <input
@@ -948,6 +982,9 @@ const App = () => {
                     />
                     Auto barriers
                   </label>
+                  <p className="hint">
+                    Turn this off to set custom levels; resetting will reapply the suggested ±5% band.
+                  </p>
                 </div>
                 <div className="field-group">
                   <label htmlFor="barrier-up">Barrier Up</label>
@@ -958,6 +995,13 @@ const App = () => {
                     disabled={autoBarriers}
                     onChange={handleBarrierChange("barrierUp")}
                   />
+                  <p className="hint">
+                    Touch Up triggers at {parsedBarrierUp ?? "—"}
+                    {barrierUpDiff != null && !Number.isNaN(barrierUpDiff)
+                      ? ` (${barrierUpDiff >= 0 ? "+" : ""}${barrierUpDiff.toFixed(1)}%)`
+                      : ""}
+                    .
+                  </p>
                 </div>
                 <div className="field-group">
                   <label htmlFor="barrier-down">Barrier Down</label>
@@ -968,10 +1012,19 @@ const App = () => {
                     disabled={autoBarriers}
                     onChange={handleBarrierChange("barrierDown")}
                   />
+                  <p className="hint">
+                    {createForm.isRace
+                      ? `Touch Down wins once price reaches ≤ ${parsedBarrierDown ?? "—"}${
+                          barrierDownDiff != null && !Number.isNaN(barrierDownDiff)
+                            ? ` (${barrierDownDiff >= 0 ? "+" : ""}${barrierDownDiff.toFixed(1)}%)`
+                            : ""
+                        }.`
+                      : `Touch Down wins if price never crosses the upper barrier before expiry.`}
+                  </p>
                 </div>
                 <button
                   type="button"
-                  className="secondary-link use-suggested"
+                  className="link-button use-suggested"
                   onClick={handleUseSuggestedBarriers}
                 >
                   Use suggested range
@@ -994,6 +1047,10 @@ const App = () => {
                       </option>
                     ))}
                   </select>
+                  <p className="hint">
+                    {durationBlocks} blocks ≈ {durationMinutes} minute
+                    {durationMinutes === 1 ? "" : "s"} (assuming ~3s blocks).
+                  </p>
                 </div>
                 <label className="checkbox">
                   <input
@@ -1036,7 +1093,6 @@ const App = () => {
                 </p>
               </div>
             </section>
-          )}
         </main>
       )}
 
@@ -1082,19 +1138,29 @@ const App = () => {
                         : "—"}
                     </strong>
                   </div>
-                <div>
-                  <span className="label">Pool</span>
-                  <strong>{poolAe.toFixed(3)} AE</strong>
-                </div>
-                <div>
-                  <span className="label">Blocks remaining</span>
-                  <strong>
-                    {blocksRemaining != null ? `${blocksRemaining}` : "—"}
-                    {approxMinutes != null ? ` · ≈ ${approxMinutes} min` : ""}
-                  </strong>
+                  <div>
+                    <span className="label">Pool</span>
+                    <strong>{poolAe.toFixed(3)} AE</strong>
+                  </div>
+                  <div>
+                    <span className="label">Blocks remaining</span>
+                    <strong>
+                      {blocksRemaining != null ? `${blocksRemaining}` : "—"}
+                      {approxMinutes != null ? ` · ≈ ${approxMinutes} min` : ""}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="label">Touch Up triggers</span>
+                    <strong>≥ {selectedMarket.barrierUp}</strong>
+                  </div>
+                  <div>
+                    <span className="label">Touch Down wins</span>
+                    <strong>
+                      {selectedMarket.isRace ? `≤ ${selectedMarket.barrierDown}` : "No touch before expiry"}
+                    </strong>
+                  </div>
                 </div>
               </div>
-            </div>
 
               <section className="market-content">
                 <div className="chart-column">
@@ -1200,6 +1266,13 @@ const App = () => {
                       <span>{poolAe > 0 ? `${noPricePercent.toFixed(1)}¢` : "—"}</span>
                     </button>
                   </div>
+                  <p className="hint">
+                    Touch Up pays out if price ever reaches ≥ {selectedMarket.barrierUp}. Touch Down pays if
+                    {selectedMarket.isRace
+                      ? `price hits ≤ ${selectedMarket.barrierDown}`
+                      : `the market never touches ≥ ${selectedMarket.barrierUp}`}
+                    before expiry.
+                  </p>
                   <label className="label" htmlFor="bet-amount">
                     Stake (AE)
                   </label>

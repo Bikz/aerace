@@ -1,18 +1,18 @@
 {
-  "short_name": "æpp",
-  "name": "æpp boilerplate",
+  "short_name": "AERace",
+  "name": "AERace Markets",
 	"start_url": ".",
   "display": "standalone",
 	"status_bar": "#311b58",
   "theme_color": "#f7296e",
 	"orientation": "portrait",
   "background_color": "#ffffff",
-	"description": "A ReactJS boilerplate to build æpps in the æternity ecosystem.",
+	"description": "AERace delivers oracle-settled barrier options trading on the æternity blockchain.",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "48x48",
-      "type": "image/x-icon"
+      "src": "aerace-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     },
     {
       "src": "static/media/icon/android-chrome-192x192.png",
