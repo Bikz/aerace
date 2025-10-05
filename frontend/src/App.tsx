@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, ComponentType } from "react";
 import type { Encoded } from "@aeternity/aepp-sdk";
-import { AE_AMOUNT_FORMATS } from "@aeternity/aepp-sdk";
+import { AE_AMOUNT_FORMATS, Contract } from "@aeternity/aepp-sdk";
 import {
   Area,
   AreaChart,
@@ -314,7 +314,8 @@ const App = () => {
 
     const loadContract = async () => {
       try {
-        const instance = (await (aeSdk as any).initializeContract({
+        const instance = (await Contract.initialize({
+          ...aeSdk.getContext(),
           sourceCode: barrierOptionsSource,
           address: contracts.barrierAddress as Encoded.ContractAddress,
         })) as any;

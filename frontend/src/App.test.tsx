@@ -47,8 +47,6 @@ jest.mock(
   { virtual: true },
 );
 
-import App from "./App";
-
 const mockContract = {
   methods: {
     getMarketCounter: jest.fn(async () => ({ decodedResult: 0 })),
@@ -60,6 +58,19 @@ const mockContract = {
     claimPayout: jest.fn(async () => undefined),
   },
 };
+
+jest.mock("@aeternity/aepp-sdk", () => {
+  const actual = jest.requireActual("@aeternity/aepp-sdk");
+  return {
+    ...actual,
+    Contract: {
+      ...actual.Contract,
+      initialize: jest.fn(async () => mockContract),
+    },
+  };
+});
+
+import App from "./App";
 
 const mockConnectToWallet = jest.fn(async () => undefined);
 const mockDisconnectWallet = jest.fn(() => undefined);
