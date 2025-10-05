@@ -290,9 +290,6 @@ const App = () => {
           sourceCode: barrierOptionsSource,
           address: contracts.barrierAddress as Encoded.ContractAddress,
         })) as any;
-        if (!instance.methods) {
-          instance.methods = instance;
-        }
         setContractInstance(instance);
         try {
           const rakeResult = await instance.methods.getRake();
