@@ -51,6 +51,8 @@ type MarketView = {
 };
 
 const AE_DECIMALS = 1_000_000_000_000_000_000n;
+const BARRIER_DECIMALS = 5;
+const PRICE_SCALE = 10 ** BARRIER_DECIMALS;
 const ASSETS = ["AE"] as const;
 const DURATION_OPTIONS = [
   { label: "1 minute", blocks: 20, suggestedPercent: 0.005 },
@@ -64,7 +66,50 @@ const DEFAULT_RAKE_PPM = 20000;
 const RAKE_SCALE = 1_000_000;
 const DEFAULT_SPOT_PRICE = 0.22;
 const STATIC_SERIES_POINTS = 12;
+const COINGECKO_SIMPLE_PRICE_URL =
+  "https://api.coingecko.com/api/v3/simple/price?ids=aeternity&vs_currencies=usd";
+const COINGECKO_MARKET_CHART_URL =
+  "https://api.coingecko.com/api/v3/coins/aeternity/market_chart?vs_currency=usd&days=1";
+const COINGECKO_DEMO_API_KEY =
+  process.env.REACT_APP_COINGECKO_DEMO_API_KEY ??
+  process.env.REACT_APP_COINGECKO_API_KEY ??
+  "CG-4t3P7yT5rUFYFz5JHTzuuDRg";
+const COINGECKO_HEADERS = COINGECKO_DEMO_API_KEY
+  ? { "x-cg-demo-api-key": COINGECKO_DEMO_API_KEY }
+  : undefined;
 const QUICK_AMOUNTS = [1, 5, 10, 25];
+
+const formatUsd = (value: number | null | undefined, fractionDigits = BARRIER_DECIMALS) => {
+  if (value == null || Number.isNaN(value)) return "—";
+  return value.toFixed(fractionDigits);
+};
+
+const formatBarrierValue = (value: number) => value.toFixed(BARRIER_DECIMALS);
+
+const MIN_DISPLAY_PRICE = 0.001;
+const MAX_DEVIATION_MULTIPLIER = 2;
+const FALLBACK_UP_MULTIPLIER = 1.05;
+const FALLBACK_DOWN_MULTIPLIER = 0.95;
+
+const deriveSpot = (spot: number | null | undefined) =>
+  spot != null && !Number.isNaN(spot) ? spot : DEFAULT_SPOT_PRICE;
+
+const isBarrierOutOfRange = (value: number, spot: number) => {
+  if (value <= 0 || Number.isNaN(value)) return true;
+  if (value < MIN_DISPLAY_PRICE) return true;
+  return value > spot * MAX_DEVIATION_MULTIPLIER || value < spot / MAX_DEVIATION_MULTIPLIER;
+};
+
+const normalizeBarrierDisplay = (
+  value: number,
+  spot: number | null | undefined,
+  type: "up" | "down",
+) => {
+  const referenceSpot = deriveSpot(spot);
+  if (!isBarrierOutOfRange(value, referenceSpot)) return value;
+  const fallbackMultiplier = type === "up" ? FALLBACK_UP_MULTIPLIER : FALLBACK_DOWN_MULTIPLIER;
+  return referenceSpot * fallbackMultiplier;
+};
 
 type PricePoint = {
   time: string;
@@ -93,7 +138,7 @@ const PriceTooltip = ({
 }) => {
   if (!active || !payload?.length) return null;
   const [{ value }] = payload;
-  return <div className="chart-tooltip">${value.toFixed(2)}</div>;
+  return <div className="chart-tooltip">${value.toFixed(BARRIER_DECIMALS)}</div>;
 };
 
 type AssetOption = (typeof ASSETS)[number];
@@ -173,24 +218,19 @@ const App = () => {
       const durationConfig = DURATION_OPTIONS.find((option) => option.blocks === durationBlocks);
       const percent = durationConfig?.suggestedPercent ?? 0.05;
       const basePrice = !price || Number.isNaN(price) ? DEFAULT_SPOT_PRICE : price;
-      const scaledBase = Math.max(Math.round(basePrice * 100), 1); // cents style scaling
-      const up = Math.max(Math.round(scaledBase * (1 + percent)), scaledBase + 1);
-      const downBase = Math.max(Math.round(scaledBase * (1 - percent)), 1);
-      const down = isRace ? Math.max(downBase, 1) : scaledBase;
-      return { up, down };
+      const upPrice = basePrice * (1 + percent);
+      const downCandidate = basePrice * (1 - percent);
+      const downPrice = isRace ? Math.max(downCandidate, 0.00001) : basePrice;
+      return { up: upPrice, down: downPrice };
     },
     [],
   );
 
-  const fetchAssetData = useCallback(async (asset: AssetOption): Promise<AssetSeries> => {
-    setPriceLoading(true);
-    setPriceError(undefined);
-
-    const basePrice = asset === "AE" ? DEFAULT_SPOT_PRICE : DEFAULT_SPOT_PRICE;
+  const buildFallbackSeries = useCallback((price: number): AssetSeries => {
     const now = Date.now();
     const series: PricePoint[] = Array.from({ length: STATIC_SERIES_POINTS }, (_, index) => {
-      const variance = Math.sin((index / STATIC_SERIES_POINTS) * Math.PI) * 0.04 * basePrice;
-      const value = Number((basePrice + variance).toFixed(4));
+      const variance = Math.sin((index / STATIC_SERIES_POINTS) * Math.PI) * 0.04 * price;
+      const value = Number((price + variance).toFixed(BARRIER_DECIMALS));
       const time = new Date(now - (STATIC_SERIES_POINTS - index) * 3_600_000).toLocaleTimeString(
         [],
         { hour: "2-digit", minute: "2-digit" },
@@ -198,17 +238,74 @@ const App = () => {
       return { time, value };
     });
 
-    const data: AssetSeries = {
-      price: basePrice,
+    return {
+      price,
       series,
       fetchedAt: now,
     };
-
-    setAssetData((prev) => ({ ...prev, [asset]: data }));
-    setPriceError("Oracle responder not connected. Displaying sample AE price path.");
-    setPriceLoading(false);
-    return data;
   }, []);
+
+  const fetchAssetData = useCallback(async (asset: AssetOption): Promise<AssetSeries> => {
+    setPriceLoading(true);
+    setPriceError(undefined);
+
+    const fallback = buildFallbackSeries(DEFAULT_SPOT_PRICE);
+
+    if (asset !== "AE") {
+      setAssetData((prev) => ({ ...prev, [asset]: fallback }));
+      setPriceLoading(false);
+      return fallback;
+    }
+
+    try {
+      const requestOptions = COINGECKO_HEADERS ? { headers: COINGECKO_HEADERS } : undefined;
+      const [priceResponse, chartResponse] = await Promise.all([
+        fetch(COINGECKO_SIMPLE_PRICE_URL, requestOptions),
+        fetch(COINGECKO_MARKET_CHART_URL, requestOptions),
+      ]);
+
+      if (!priceResponse.ok) {
+        throw new Error(`Price request failed: ${priceResponse.status}`);
+      }
+
+      const priceJson = await priceResponse.json();
+      const usdPrice = priceJson?.aeternity?.usd;
+      if (typeof usdPrice !== "number" || Number.isNaN(usdPrice)) {
+        throw new Error("Unexpected price payload");
+      }
+
+      let series: PricePoint[] | undefined;
+      if (chartResponse.ok) {
+        const chartJson = await chartResponse.json();
+        const pricePoints: Array<[number, number]> = chartJson?.prices ?? [];
+        if (Array.isArray(pricePoints) && pricePoints.length > 0) {
+          series = pricePoints.slice(-STATIC_SERIES_POINTS).map(([timestamp, value]) => ({
+            time: new Date(timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            value: Number(value.toFixed(BARRIER_DECIMALS)),
+          }));
+        }
+      }
+
+      const data: AssetSeries = {
+        price: Number(usdPrice.toFixed(BARRIER_DECIMALS)),
+        series: series ?? fallback.series,
+        fetchedAt: Date.now(),
+      };
+
+      setAssetData((prev) => ({ ...prev, [asset]: data }));
+      setPriceLoading(false);
+      return data;
+    } catch (error) {
+      console.error("Failed to load AE price from CoinGecko", error);
+      setPriceError("Live AE price unavailable. Showing sample price path.");
+      setAssetData((prev) => ({ ...prev, [asset]: fallback }));
+      setPriceLoading(false);
+      return fallback;
+    }
+  }, [buildFallbackSeries]);
 
   const selectedMarket = useMemo(
     () => markets.find((m) => m.id === selectedMarketId) ?? null,
@@ -220,23 +317,36 @@ const App = () => {
     : undefined;
   const createAssetData = assetData[createForm.asset];
   const createSpot = createAssetData?.price ?? null;
+  const normalizedSelectedBarrierUp = selectedMarket
+    ? normalizeBarrierDisplay(selectedMarket.barrierUp, selectedAssetData?.price, "up")
+    : null;
+  const normalizedSelectedBarrierDown = selectedMarket
+    ? normalizeBarrierDisplay(selectedMarket.barrierDown, selectedAssetData?.price, "down")
+    : null;
+  const displaySelectedBarrierUp = normalizedSelectedBarrierUp ?? selectedMarket?.barrierUp ?? null;
+  const displaySelectedBarrierDown =
+    normalizedSelectedBarrierDown ?? selectedMarket?.barrierDown ?? null;
   const parsedBarrierUp = createForm.barrierUp === "" ? null : Number(createForm.barrierUp);
   const parsedBarrierDown = createForm.barrierDown === "" ? null : Number(createForm.barrierDown);
-  const barrierUpDisplay =
+  const normalizedCreateBarrierUp =
     parsedBarrierUp != null && !Number.isNaN(parsedBarrierUp)
-      ? (parsedBarrierUp / 100).toFixed(2)
+      ? normalizeBarrierDisplay(parsedBarrierUp, createSpot, "up")
       : null;
-  const barrierDownDisplay =
+  const normalizedCreateBarrierDown =
     parsedBarrierDown != null && !Number.isNaN(parsedBarrierDown)
-      ? (parsedBarrierDown / 100).toFixed(2)
+      ? normalizeBarrierDisplay(parsedBarrierDown, createSpot, "down")
       : null;
+  const barrierUpDisplay =
+    normalizedCreateBarrierUp != null ? formatUsd(normalizedCreateBarrierUp) : null;
+  const barrierDownDisplay =
+    normalizedCreateBarrierDown != null ? formatUsd(normalizedCreateBarrierDown) : null;
   const barrierUpDiff =
-    createSpot != null && parsedBarrierUp != null && !Number.isNaN(parsedBarrierUp)
-      ? ((parsedBarrierUp / 100 - createSpot) / createSpot) * 100
+    createSpot != null && normalizedCreateBarrierUp != null
+      ? ((normalizedCreateBarrierUp - createSpot) / createSpot) * 100
       : null;
   const barrierDownDiff =
-    createSpot != null && parsedBarrierDown != null && !Number.isNaN(parsedBarrierDown)
-      ? ((parsedBarrierDown / 100 - createSpot) / createSpot) * 100
+    createSpot != null && normalizedCreateBarrierDown != null
+      ? ((normalizedCreateBarrierDown - createSpot) / createSpot) * 100
       : null;
   const durationBlocks = Number(createForm.duration || DURATION_OPTIONS[0].blocks);
   const durationMinutes = Math.max(Math.round((durationBlocks * 3) / 60), 1);
@@ -355,11 +465,13 @@ const App = () => {
         const raw = result.decodedResult as RawMarket;
         const totalUp = BigInt(raw.total_up.toString());
         const totalDown = BigInt(raw.total_down.toString());
+        const barrierUpValue = Number(raw.barrier_up) / PRICE_SCALE;
+        const barrierDownValue = Number(raw.barrier_down) / PRICE_SCALE;
         items.push({
           id: Number(raw.id),
           asset: (ASSETS.find((a) => a === raw.asset) ?? "AE") as AssetOption,
-          barrierUp: Number(raw.barrier_up),
-          barrierDown: Number(raw.barrier_down),
+          barrierUp: barrierUpValue,
+          barrierDown: barrierDownValue,
           expiry: Number(raw.expiry),
           isRace: Boolean(raw.is_race),
           status: raw.status,
@@ -377,7 +489,10 @@ const App = () => {
       if (!items.length) {
         setSelectedMarketId(null);
       } else if (!items.some((m) => m.id === selectedMarketId)) {
-        setSelectedMarketId(items[0].id);
+        const latestMarketId = items[items.length - 1]?.id;
+        if (latestMarketId != null) {
+          setSelectedMarketId(latestMarketId);
+        }
       }
       return items;
     } catch (error) {
@@ -407,19 +522,21 @@ const App = () => {
     const data = assetData[createForm.asset];
     if (!data) return;
     const suggestions = computeSuggestedBarriers(data.price, createForm.isRace, durationBlocks);
+    const formattedUp = formatBarrierValue(suggestions.up);
+    const formattedDown = formatBarrierValue(suggestions.down);
     setCreateForm((prev) => {
       const nextDuration = prev.duration === "" ? DURATION_OPTIONS[2].blocks.toString() : prev.duration;
       if (
-        prev.barrierUp === suggestions.up.toString() &&
-        prev.barrierDown === suggestions.down.toString() &&
+        prev.barrierUp === formattedUp &&
+        prev.barrierDown === formattedDown &&
         prev.duration === nextDuration
       ) {
         return prev;
       }
       return {
         ...prev,
-        barrierUp: suggestions.up.toString(),
-        barrierDown: suggestions.down.toString(),
+        barrierUp: formattedUp,
+        barrierDown: formattedDown,
         duration: nextDuration,
       };
     });
@@ -467,8 +584,8 @@ const App = () => {
     setAutoBarriers(true);
     setCreateForm((prev) => ({
       ...prev,
-      barrierUp: suggestions.up.toString(),
-      barrierDown: suggestions.down.toString(),
+      barrierUp: formatBarrierValue(suggestions.up),
+      barrierDown: formatBarrierValue(suggestions.down),
     }));
   };
 
@@ -527,8 +644,9 @@ const App = () => {
     setSuccessMessage(undefined);
     if (!guardConnection()) return;
     try {
-      let barrierUp = Math.round(Number(createForm.barrierUp));
-      let barrierDown = Math.round(Number(createForm.barrierDown));
+      const parseBarrier = (value: string) => (value.trim() === "" ? Number.NaN : Number(value));
+      let barrierUpValue = parseBarrier(createForm.barrierUp);
+      let barrierDownValue = parseBarrier(createForm.barrierDown);
       const duration = Number(createForm.duration);
 
       if (autoBarriers) {
@@ -541,22 +659,28 @@ const App = () => {
           createForm.isRace,
           duration,
         );
-        barrierUp = suggestions.up;
-        barrierDown = suggestions.down;
+        barrierUpValue = suggestions.up;
+        barrierDownValue = suggestions.down;
       }
 
-      if (Number.isNaN(barrierUp) || barrierUp <= 0) {
+      if (Number.isNaN(barrierUpValue) || barrierUpValue <= 0) {
         throw new Error("Barrier up must be positive.");
       }
-      if (createForm.isRace && (Number.isNaN(barrierDown) || barrierDown <= 0)) {
+      if (createForm.isRace && (Number.isNaN(barrierDownValue) || barrierDownValue <= 0)) {
         throw new Error("Barrier down must be positive for race markets.");
       }
-      if (!createForm.isRace && Number.isNaN(barrierDown)) {
-        throw new Error("Barrier down is required.");
+      if (!createForm.isRace && Number.isNaN(barrierDownValue)) {
+        barrierDownValue = barrierUpValue;
       }
       if (Number.isNaN(duration) || duration <= 0) {
         throw new Error("Duration must be a positive number of blocks.");
       }
+
+      const finalBarrierDownValue = Number.isNaN(barrierDownValue)
+        ? barrierUpValue
+        : barrierDownValue;
+      const barrierUp = Math.round(barrierUpValue * PRICE_SCALE);
+      const barrierDown = Math.round(finalBarrierDownValue * PRICE_SCALE);
 
       setPendingAction("create-market");
       await contractInstance.createMarket(
@@ -852,6 +976,16 @@ const App = () => {
                   chainHeight != null ? Math.max(market.expiry - chainHeight, 0) : null;
                 const approxMinutesCard =
                   blocksToExpiry != null ? Math.max(Math.round(blocksToExpiry * 3), 0) : null;
+                const displayBarrierUpCard = normalizeBarrierDisplay(
+                  market.barrierUp,
+                  spot,
+                  "up",
+                );
+                const displayBarrierDownCard = normalizeBarrierDisplay(
+                  market.barrierDown,
+                  spot,
+                  "down",
+                );
                 return (
                   <li key={market.id}>
                     <button
@@ -870,7 +1004,7 @@ const App = () => {
                       </div>
                       <h3>#{market.id} · {market.asset} touch</h3>
                       <p className="expiry">
-                        Touch {market.barrierDown} ↔ {market.barrierUp} · block {market.expiry}
+                        Touch {formatUsd(displayBarrierDownCard)} ↔ {formatUsd(displayBarrierUpCard)} · block {market.expiry}
                         {blocksToExpiry != null && (
                           <>
                             <br />
@@ -882,7 +1016,7 @@ const App = () => {
                       </p>
                       <div className="discover-price-line">
                         <span className="spot">
-                          {spot ? `$${spot.toFixed(2)}` : "Loading…"}
+                          {spot != null ? `$${formatUsd(spot)}` : "Loading…"}
                         </span>
                         <span className={`change ${change >= 0 ? "up" : "down"}`}>
                           {changeLabel}
@@ -969,7 +1103,7 @@ const App = () => {
                         <span className="spot-value">Loading…</span>
                       ) : createAssetData ? (
                         <span className="spot-value">
-                          ${createAssetData.price.toFixed(2)}
+                          ${formatUsd(createAssetData.price)}
                         </span>
                       ) : (
                         <span className="spot-value">No data</span>
@@ -985,7 +1119,7 @@ const App = () => {
                     {priceError && <p className="hint error-text">{priceError}</p>}
                     {createSpot != null && (
                       <p className="hint">
-                        Current spot ≈ ${createSpot.toFixed(3)}. Suggested barriers follow the selected
+                        Current spot ≈ ${formatUsd(createSpot)}. Suggested barriers follow the selected
                         duration (±{durationPercentLabel}%).
                       </p>
                     )}
@@ -1008,7 +1142,7 @@ const App = () => {
                   <input
                     id="barrier-up"
                     type="number"
-                    step="0.0001"
+                    step="0.00001"
                     value={createForm.barrierUp}
                     disabled={autoBarriers}
                     onChange={handleBarrierChange("barrierUp")}
@@ -1026,7 +1160,7 @@ const App = () => {
                   <input
                     id="barrier-down"
                     type="number"
-                    step="0.0001"
+                    step="0.00001"
                     value={createForm.barrierDown}
                     disabled={autoBarriers}
                     onChange={handleBarrierChange("barrierDown")}
@@ -1139,14 +1273,14 @@ const App = () => {
                   <div>
                     <h2>{selectedMarket.asset}/USD barrier market</h2>
                     <p>
-                      Touch range {selectedMarket.barrierDown} – {selectedMarket.barrierUp} · block {selectedMarket.expiry}
+                      Touch range {formatUsd(displaySelectedBarrierDown)} – {formatUsd(displaySelectedBarrierUp)} · block {selectedMarket.expiry}
                     </p>
                   </div>
                 </div>
                 <div className="market-metrics">
                   <div>
                     <span className="label">Spot</span>
-                    <strong>{selectedSpot ? `$${selectedSpot.toFixed(2)}` : "Loading…"}</strong>
+                    <strong>{selectedSpot != null ? `$${formatUsd(selectedSpot)}` : "Loading…"}</strong>
                   </div>
                   <div>
                     <span className="label">24h change</span>
@@ -1169,12 +1303,14 @@ const App = () => {
                   </div>
                   <div>
                     <span className="label">Touch Up triggers</span>
-                    <strong>≥ {selectedMarket.barrierUp}</strong>
+                    <strong>≥ {formatUsd(displaySelectedBarrierUp)}</strong>
                   </div>
                   <div>
                     <span className="label">Touch Down wins</span>
                     <strong>
-                      {selectedMarket.isRace ? `≤ ${selectedMarket.barrierDown}` : "No touch before expiry"}
+                      {selectedMarket.isRace
+                        ? `≤ ${formatUsd(displaySelectedBarrierDown)}`
+                        : "No touch before expiry"}
                     </strong>
                   </div>
                 </div>
@@ -1187,7 +1323,7 @@ const App = () => {
                       <div>
                         <h3>{selectedMarket.asset}/USD</h3>
                         <p>
-                          {selectedSpot ? `Spot $${selectedSpot.toFixed(2)}` : "Fetching spot…"} · {selectedSeries.length} points
+                          {selectedSpot != null ? `Spot $${formatUsd(selectedSpot)}` : "Fetching spot…"} · {selectedSeries.length} points
                         </p>
                       </div>
                       <button
@@ -1228,7 +1364,7 @@ const App = () => {
                     <div className="outcome-row">
                       <div>
                         <h4>Touch Up</h4>
-                        <p>Barrier ≥ {selectedMarket.barrierUp}</p>
+                        <p>Barrier ≥ {formatUsd(displaySelectedBarrierUp)}</p>
                       </div>
                       <div className="outcome-chance">
                         {poolAe > 0 ? `${yesPricePercent.toFixed(1)}%` : "—"}
@@ -1244,7 +1380,7 @@ const App = () => {
                     <div className="outcome-row">
                       <div>
                         <h4>Touch Down</h4>
-                        <p>Barrier ≤ {selectedMarket.barrierDown}</p>
+                        <p>Barrier ≤ {formatUsd(displaySelectedBarrierDown)}</p>
                       </div>
                       <div className="outcome-chance">
                         {poolAe > 0 ? `${noPricePercent.toFixed(1)}%` : "—"}
@@ -1273,7 +1409,7 @@ const App = () => {
                       onClick={() => setBetForm((prev) => ({ ...prev, onUp: true }))}
                     >
                       Touch Up
-                      <span>{poolAe > 0 ? `${yesPricePercent.toFixed(1)}¢` : "—"}</span>
+                      <span>≥ {formatUsd(displaySelectedBarrierUp)}</span>
                     </button>
                     <button
                       type="button"
@@ -1281,14 +1417,18 @@ const App = () => {
                       onClick={() => setBetForm((prev) => ({ ...prev, onUp: false }))}
                     >
                       Touch Down
-                      <span>{poolAe > 0 ? `${noPricePercent.toFixed(1)}¢` : "—"}</span>
+                      <span>
+                        {selectedMarket.isRace
+                          ? `≤ ${formatUsd(displaySelectedBarrierDown)}`
+                          : `No touch ≥ ${formatUsd(displaySelectedBarrierUp)}`}
+                      </span>
                     </button>
                   </div>
                   <p className="hint">
-                    Touch Up pays out if price ever reaches ≥ {selectedMarket.barrierUp}. Touch Down pays if
-                    {selectedMarket.isRace
-                      ? `price hits ≤ ${selectedMarket.barrierDown}`
-                      : `the market never touches ≥ ${selectedMarket.barrierUp}`}
+                    Touch Up pays out if price ever reaches ≥ {formatUsd(displaySelectedBarrierUp)}. Touch Down pays if
+                      {selectedMarket.isRace
+                        ? `price hits ≤ ${formatUsd(displaySelectedBarrierDown)}`
+                        : `the market never touches ≥ ${formatUsd(displaySelectedBarrierUp)}`}
                     before expiry.
                   </p>
                   <label className="label" htmlFor="bet-amount">

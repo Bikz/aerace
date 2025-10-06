@@ -36,12 +36,21 @@ function variantValue(option) {
   return option;
 }
 
+const COINGECKO_PRICE_URL =
+  "https://api.coingecko.com/api/v3/simple/price?ids=aeternity&vs_currencies=usd";
+const PRICE_SCALE = 100000;
+const COINGECKO_API_KEY =
+  process.env.COINGECKO_DEMO_API_KEY ??
+  process.env.COINGECKO_API_KEY ??
+  "CG-4t3P7yT5rUFYFz5JHTzuuDRg";
+
 async function fetchPrice(payload) {
-  const defaultPrice = 10000; // 100.00 (4 decimals)
+  const defaultPrice = Math.round(100 * PRICE_SCALE); // 100.00000
   try {
-    const response = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=aeternity&vs_currencies=usd",
-    );
+    const headers = COINGECKO_API_KEY
+      ? { "x-cg-demo-api-key": COINGECKO_API_KEY }
+      : undefined;
+    const response = await fetch(COINGECKO_PRICE_URL, { headers });
     if (!response.ok) {
       console.warn("Price API response not ok", response.status);
       return defaultPrice;
@@ -51,8 +60,8 @@ async function fetchPrice(payload) {
     if (typeof usd !== "number" || Number.isNaN(usd)) {
       return defaultPrice;
     }
-    // scale by 100 to avoid floating point in contract
-    return Math.round(usd * 100);
+    // scale to match frontend barrier precision (5 decimals)
+    return Math.round(usd * PRICE_SCALE);
   } catch (error) {
     console.warn("Failed to fetch price", error);
     return defaultPrice;

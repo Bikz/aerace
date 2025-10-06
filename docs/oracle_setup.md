@@ -79,6 +79,9 @@ node scripts/configureBarrierOracle.js
    (Adjust fee and payload as needed.)
 3. The oracle owner runs a responder that calls `ExchangeOracle.respond` with the
    computed price for the returned `oracle_query` ID.
+   - Set `COINGECKO_DEMO_API_KEY` (or `COINGECKO_API_KEY`) so the responder can
+     send the `x-cg-demo-api-key` header to CoinGecko's demo API. A default key
+     is bundled for local testing.
 4. Finish settlement via `checkMarketFromOracle <market_id>`.
 
 You can automate steps 2–4 by writing a small Node.js daemon that listens for

@@ -9,6 +9,7 @@ import {
 } from "@aeternity/aepp-sdk";
 
 const BARRIER_SOURCE = "./contracts/BarrierOptions.aes";
+const PRICE_SCALE = 100000;
 const NODE_URL = process.env.AE_NODE_URL ?? "https://testnet.aeternity.io";
 const COMPILER_URL = process.env.AE_COMPILER_URL ?? "https://v8.compiler.aepps.com";
 const SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
@@ -17,8 +18,8 @@ const BARRIER_CONTRACT_ADDRESS =
 
 const DEMO_CONFIG = {
   asset: "AE",
-  barrierUp: 23,
-  barrierDown: 21,
+  barrierUp: Math.round(0.023 * PRICE_SCALE),
+  barrierDown: Math.round(0.021 * PRICE_SCALE),
   duration: 20, // ~1 minute at 3s blocks
   isRace: false,
 };
@@ -69,13 +70,20 @@ async function createDemoMarket(contract, account) {
 }
 
 async function seedLiquidity(contract, account, marketId) {
-  const amount = BigInt("1000000000000000000"); // 1 AE
-  console.log(`Seeding 1 AE on Touch Up for market #${marketId}...`);
-  const result = await contract.placeBet(marketId, true, {
+  const upAmount = BigInt("500000000000000000"); // 0.5 AE
+  const downAmount = BigInt("500000000000000000");
+  console.log(`Seeding ${upAmount / 10n ** 18n} AE on Touch Up for market #${marketId}...`);
+  const resultUp = await contract.placeBet(marketId, true, {
     onAccount: account,
-    amount,
+    amount: upAmount,
   });
-  console.log(`  tx hash: ${result.hash}`);
+  console.log(`  up tx hash: ${resultUp.hash}`);
+  console.log(`Seeding ${downAmount / 10n ** 18n} AE on Touch Down for market #${marketId}...`);
+  const resultDown = await contract.placeBet(marketId, false, {
+    onAccount: account,
+    amount: downAmount,
+  });
+  console.log(`  down tx hash: ${resultDown.hash}`);
 }
 
 async function main() {

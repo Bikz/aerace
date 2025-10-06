@@ -1,5 +1,7 @@
 # Barrier Options dApp (æternity Hackathon)
 
+**🏆 Winner — æternity Hackathon**
+
 This project implements a barrier-options betting platform on the æternity blockchain. Participants wager on whether an asset price will touch an upper or lower barrier before expiry (one-touch / no-touch markets) or race between barriers. The stack includes:
 
 - **Sophia contracts** (`contracts/BarrierOptions.aes`, `contracts/ExchangeOracle.aes`) running on æternity testnet.
@@ -95,7 +97,7 @@ env \
 ```
 This script:
 1. Polls `BarrierOptions` for pending oracle queries.
-2. Fetches AE/USD price from CoinGecko (fallback to a default).
+2. Fetches AE/USD price from CoinGecko Demo API (fallback to a default).
 3. Calls `ExchangeOracle.respond`, then triggers `checkMarketFromOracle`.
 4. Extends the oracle TTL periodically.
 
@@ -116,6 +118,7 @@ Keep the responder running continuously while your front end is live.
 | `BARRIER_CONTRACT_ADDRESS` | Deployed BarrierOptions address (`ct_...`) | — |
 | `PRICE_ORACLE_ID` | Oracle ID (`ok_...`) returned by ExchangeOracle | — |
 | `ORACLE_CONTRACT_ADDRESS` | Deployed ExchangeOracle address (`ct_...`) | — |
+| `COINGECKO_DEMO_API_KEY` | Demo API key injected into CoinGecko requests | `CG-4t3P7yT5rUFYFz5JHTzuuDRg` |
 
 ## Useful Addresses
 - BarrierOptions (testnet): `ct_7jTDxrEWXGBBSmhtQPP89aoNZ1qPXreGrszW8rJ86v9QYgu4a`
@@ -137,6 +140,7 @@ Keep the responder running continuously while your front end is live.
   - `REACT_APP_PRICE_ORACLE_ID`
   - `REACT_APP_OWNER_ADDRESS`
   - `REACT_APP_ORACLE_QUERY_FEE`
+  - `REACT_APP_COINGECKO_API_KEY` (or `REACT_APP_COINGECKO_DEMO_API_KEY`)
 
 - Features: wallet connect, market list/detail, betting form, owner controls, oracle trigger, payout claim UI. Uses `AeSdkAepp` to compile the contract source at runtime.
 
